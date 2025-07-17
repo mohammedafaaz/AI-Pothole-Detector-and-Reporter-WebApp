@@ -1,0 +1,104 @@
+/* postcss-tailwindcss directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+.glass {
+  background: rgba(0, 0, 0, 0.142);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.208);
+}
+
+.dark-gradient {
+  background: linear-gradient(135deg,rgb(33, 35, 55) 0%, #131525 100%);
+}
+
+.gov-gradient {
+  background: linear-gradient(135deg, #830707 0%, #2e1515 100%);
+}
+
+/* Map styles */
+.radius-circle {
+  stroke: #a70000;
+  stroke-width: 2;
+  fill: #22ff0080;
+  fill-opacity: 0.2;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(17, 25, 40, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.7);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(16px);}
+  to { opacity: 1; transform: translateY(0);}
+}
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.95);}
+  100% { opacity: 1; transform: scale(1);}
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(40px);}
+  to { opacity: 1; transform: translateX(0);}
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-40px);}
+  to { opacity: 1; transform: translateX(0);}
+}
+@keyframes bounce-in {
+  0% { transform: scale(0.9);}
+  60% { transform: scale(1.05);}
+  100% { transform: scale(1);}
+}
+
+/* Utility classes for animation */
+.animate-fade-in {
+  animation: fade-in 0.5s cubic-bezier(.4,0,.2,1) both;
+}
+.animate-pop-in {
+  animation: pop-in 0.4s cubic-bezier(.4,0,.2,1) both;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s cubic-bezier(.4,0,.2,1) both;
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.5s cubic-bezier(.4,0,.2,1) both;
+}
+.animate-bounce-in {
+  animation: bounce-in 0.5s cubic-bezier(.4,0,.2,1) both;
+}
+
+/* Responsive sidebar overlay for mobile */
+@media (max-width: 767px) {
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 40;
+  }
+  .sidebar-mobile {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 16rem; /* 64 */
+    z-index: 50;
+    box-shadow: 0 0 24px 0 rgba(0,0,0,0.2);
+  }
+}
