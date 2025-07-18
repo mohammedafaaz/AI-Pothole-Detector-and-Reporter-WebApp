@@ -1,21 +1,30 @@
-import React, { useState, useMemo } from 'react';
-import { MapPin, X, TrendingUp, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAppStore } from '../store';
+// import { Report } from '../types'; // Removed unused import
+import {
+  Plus, MapPin, X,
+  TrendingUp, AlertTriangle, CheckCircle, Clock
+} from 'lucide-react';
 import EnhancedMap from '../components/EnhancedMap';
 import ModernReportCard from '../components/ModernReportCard';
 import StatsCard from '../components/StatsCard';
 import MobileNavigation from '../components/MobileNavigation';
+import CitizenHeader from '../components/CitizenHeader';
+import ReportFilters, { FilterOptions } from '../components/ReportFilters';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import ReportFilters, { FilterOptions } from '../components/ReportFilters';
-import { useAppStore } from '../store';
-import { filterReportsWithinRadius } from '../utils/location';
 
-const GovDashboard: React.FC = () => {
+const ModernDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const {
     reports,
-    govLocation
+    isGovUser,
+    userLocation,
+    setUserLocation
   } = useAppStore();
 
+  // Removed selectedReport state since we removed the sidebar
   const [showMap, setShowMap] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     severity: [],
@@ -24,12 +33,28 @@ const GovDashboard: React.FC = () => {
     sortOrder: 'desc'
   });
 
-  // Government location is set during profile setup, no auto-detection needed
-  // Filter reports within 5km radius for government users with additional filters
+  // Get user location on mount
+  useEffect(() => {
+    if (!userLocation && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.log('Location access denied:', error);
+          // Default to NYC
+          setUserLocation({ lat: 40.7128, lng: -74.0060 });
+        }
+      );
+    }
+  }, [userLocation, setUserLocation]);
+
+  // Filter and sort reports
   const filteredReports = useMemo(() => {
-    let filtered = govLocation
-      ? filterReportsWithinRadius(reports, govLocation.lat, govLocation.lng, 5)
-      : [];
+    let filtered = reports;
 
     // Severity filter
     if (filters.severity.length > 0) {
@@ -86,57 +111,52 @@ const GovDashboard: React.FC = () => {
     });
 
     return filtered;
-  }, [reports, govLocation, filters]);
+  }, [reports, filters]);
 
-  // Calculate stats based on filtered reports
+  // Calculate stats
   const stats = {
-    total: filteredReports.length,
-    pending: filteredReports.filter(r => r.verified === 'pending').length,
-    inProgress: filteredReports.filter(r => r.fixingStatus === 'in_progress').length,
-    resolved: filteredReports.filter(r => r.fixingStatus === 'resolved').length,
-    highSeverity: filteredReports.filter(r => r.severity === 'high').length
+    total: reports.length,
+    pending: reports.filter(r => r.fixingStatus === 'pending').length,
+    inProgress: reports.filter(r => r.fixingStatus === 'in_progress').length,
+    resolved: reports.filter(r => r.fixingStatus === 'resolved').length,
+    highSeverity: reports.filter(r => r.severity === 'high').length
   };
-  
+
+  // User stats removed to fix unused variable warning
+
+  // Removed handleReportSelect since we removed the sidebar
+
   return (
-    <div className="min-h-screen bg-red-50">
+    <div className="min-h-screen bg-gray-50">
       <MobileNavigation />
 
-      {/* Centered Logo Header */}
-      <div className="bg-white border-b border-gray-200 md:pl-64">
-        <div className="flex items-center justify-center py-1">
-          <div className="flex items-center">
-            <div className="w-16 h-16 flex items-center justify-center">
-              <img
-                src="/logo2.jpg"
-                alt="FixMyPothole.AI Logo"
-                className="w-16 h-16 object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Citizen Header */}
+      <CitizenHeader />
 
       {/* Desktop sidebar spacing */}
       <div className="md:pl-64">
         {/* Header */}
-        <div className="bg-red-900 border-b border-red-800 px-4 py-4 md:px-6">
+        <div className="bg-white border-b border-gray-200 px-4 py-4 md:px-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">Reports Submitted under your Area</h1>
-              <div className="mt-2">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-900">
-                  5km Radius Assigned Reports & Stats
-                </span>
-              </div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {isGovUser ? 'Government Reports' : 'Live Reports Feed'}
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                {isGovUser
+                  ? ''
+                  : ''
+                }
+              </p>
             </div>
-
+            
             {/* Map button */}
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
                 icon={<MapPin className="w-4 h-4" />}
                 onClick={() => setShowMap(true)}
-                className="bg-red-200 text-red-900 border-red-300 hover:bg-red-300"
+                className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
               >
                 <span className="hidden sm:inline">View Map</span>
               </Button>
@@ -152,44 +172,45 @@ const GovDashboard: React.FC = () => {
             className="mb-6"
           />
 
-          {/* Stats Overview */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 border-b border-gray-200 pb-2">Reports Stats in your Radius</h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <StatsCard
-              title="Total Reports"
-              value={stats.total}
-              icon={AlertTriangle}
-              
-            />
-            <StatsCard
-              title="Pending Review"
-              value={stats.pending}
-              icon={Clock}
-              
-            />
-            <StatsCard
-              title="In Progress"
-              value={stats.inProgress}
-              icon={TrendingUp}
-              
-            />
-            <StatsCard
-              title="Resolved"
-              value={stats.resolved}
-              icon={CheckCircle}
-              
-            />
-            <StatsCard
-              title="High Priority"
-              value={stats.highSeverity}
-              icon={AlertTriangle}
-              
-            />
+          {/* Stats Overview - Only for Government */}
+          {isGovUser && (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+              <StatsCard
+                title="Total Reports"
+                value={stats.total}
+                icon={AlertTriangle}
+                
+              />
+              <StatsCard
+                title="Pending"
+                value={stats.pending}
+                icon={Clock}
+                
+              />
+              <StatsCard
+                title="In Progress"
+                value={stats.inProgress}
+                icon={TrendingUp}
+                
+              />
+              <StatsCard
+                title="Resolved"
+                value={stats.resolved}
+                icon={CheckCircle}
+                
+              />
+              <StatsCard
+                title="High Priority"
+                value={stats.highSeverity}
+                icon={AlertTriangle}
+                
+              />
             </div>
-          </div>
+          )}
 
-          {/* Reports Grid */}
+          {/* Removed search and filters section */}
+
+          {/* Main Content - Reports Grid */}
           <div className="w-full">
             {filteredReports.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -197,7 +218,7 @@ const GovDashboard: React.FC = () => {
                   <ModernReportCard
                     key={report.id}
                     report={report}
-                    isGovView={true}
+                    isGovView={isGovUser}
                   />
                 ))}
               </div>
@@ -206,8 +227,16 @@ const GovDashboard: React.FC = () => {
                 <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No reports found</h3>
                 <p className="text-gray-600 mb-4">
-                  No pothole reports submitted yet
+                  No pothole reports have been submitted yet
                 </p>
+                {!isGovUser && (
+                  <Button
+                    icon={<Plus className="w-4 h-4" />}
+                    onClick={() => navigate('/report')}
+                  >
+                    Report a Pothole
+                  </Button>
+                )}
               </Card>
             )}
           </div>
@@ -232,8 +261,7 @@ const GovDashboard: React.FC = () => {
                     reports={filteredReports}
                     height="100%"
                     className="w-full h-full"
-                    showRadius={true}
-                    centerLocation={govLocation}
+                    centerLocation={userLocation}
                   />
                 </div>
               </div>
@@ -245,4 +273,4 @@ const GovDashboard: React.FC = () => {
   );
 };
 
-export default GovDashboard;
+export default ModernDashboard;

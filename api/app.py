@@ -20,6 +20,8 @@ import sys
 import json
 from functools import wraps
 
+# Note: Database imports removed - using localStorage only
+
 # Initialize Flask app
 app = Flask(__name__, static_url_path='/static')
 
@@ -281,25 +283,26 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
         # Generate map and get address if location exists
         map_path = None
         detailed_address = None
-        print(f"Map generation debug - location: {location}, MAPBOX_ACCESS_TOKEN: {bool(MAPBOX_ACCESS_TOKEN)}")
+        print(f"📍 Map generation debug - location: {location}")
+        print(f"🗺️ MAPBOX_ACCESS_TOKEN available: {bool(MAPBOX_ACCESS_TOKEN)}")
 
-        if location and MAPBOX_ACCESS_TOKEN:
-            print(f"Generating map for coordinates: {location['latitude']}, {location['longitude']}")
-            map_path = generate_static_map(
-                location['latitude'],
-                location['longitude'],
-                severity
-            )
-            print(f"Map generation result: {map_path}")
+        if location and location.get('latitude') and location.get('longitude') and MAPBOX_ACCESS_TOKEN:
+            lat, lng = location['latitude'], location['longitude']
+            print(f"🗺️ Generating map for coordinates: {lat}, {lng}")
+
+            map_path = generate_static_map(lat, lng, severity)
+            print(f"🗺️ Map generation result: {map_path}")
 
             # Get detailed address
-            detailed_address = get_address_from_coordinates(
-                location['latitude'],
-                location['longitude']
-            )
-            print(f"Address result: {detailed_address}")
+            detailed_address = get_address_from_coordinates(lat, lng)
+            print(f"📍 Address lookup result: {detailed_address}")
         else:
-            print("Map not generated - missing location or Mapbox token")
+            missing_items = []
+            if not location: missing_items.append("location data")
+            elif not location.get('latitude'): missing_items.append("latitude")
+            elif not location.get('longitude'): missing_items.append("longitude")
+            if not MAPBOX_ACCESS_TOKEN: missing_items.append("Mapbox token")
+            print(f"❌ Map not generated - missing: {', '.join(missing_items)}")
 
         # Get user info for detailed report
         user_name = user_info.get('name', 'Unknown User') if user_info else 'Unknown User'
@@ -336,8 +339,11 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
         </head>
         <body>
             <div class="header">
-                <h1>Pothole Detection Report</h1>
-                <p>AI-Detected pothole Analysis</p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <img src="cid:logo_image" alt="FixMyPothole.AI Logo" style="width: 80px; height: 80px; object-fit: contain; border-radius: 10px;">
+                </div>
+                <h1>FixMyPothole.AI Detection Report</h1>
+                <p>AI-Powered Pothole Detection & Analysis</p>
                 <p style="font-size: 14px; opacity: 0.9;">Generated on {current_time}</p>
             </div>
 
@@ -368,10 +374,11 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
                 </div>
 
                 <div class="info-card">
-                    <h3>Location Details</h3>
-                    {f"<p><strong>Location:</strong> {detailed_address}</p>" if detailed_address else ""}
-                    <p><strong>Coordinates:</strong> {location['latitude'] if location else 'N/A'}, {location['longitude'] if location else 'N/A'}</p>
-                    <p><strong>GPS Accuracy:</strong> High precision location data</p>
+                    <h3>📍 Location Details</h3>
+                    {f"<p><strong>📍 Address:</strong> {detailed_address}</p>" if detailed_address else "<p><strong>📍 Address:</strong> <em>Address lookup not available</em></p>"}
+                    <p><strong>🌐 GPS Coordinates:</strong> {f"{location['latitude']:.6f}, {location['longitude']:.6f}" if location and location.get('latitude') and location.get('longitude') else '<span style="color: #dc3545;">⚠️ Location data not available - GPS may have been disabled</span>'}</p>
+                    {f"<p><strong>🎯 Precision:</strong> ±{location.get('accuracy', 'Unknown')}m accuracy</p>" if location and location.get('accuracy') else "<p><strong>🎯 Precision:</strong> High precision GPS data</p>" if location else "<p><strong>🎯 Precision:</strong> <em>Location precision unknown</em></p>"}
+                    {f"<p><strong>🗺️ Map Link:</strong> <a href='https://www.google.com/maps?q={location['latitude']},{location['longitude']}' target='_blank' style='color: #007bff; text-decoration: none;'>📍 View on Google Maps</a></p>" if location and location.get('latitude') and location.get('longitude') else "<p><strong>🗺️ Map Link:</strong> <em>Not available without GPS coordinates</em></p>"}
                 </div>
 
                 <div class="info-card">
@@ -399,8 +406,9 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
                 </div>
 
                 <div class="info-card map-container">
-                    <h3>LMap</h3>
-                    {f'<img src="cid:map_image" alt="Pothole location map" style="border: 3px solid #dee2e6;">' if map_path else '<p style="color: #6c757d;">Location map not available</p>'}
+                    <h3>📍 Location Map</h3>
+                    {f'<img src="cid:map_image" alt="Pothole location map" style="border: 3px solid #dee2e6; max-width: 100%; height: auto;">' if map_path else '<p style="color: #6c757d;">📍 Location map not available - GPS coordinates may be missing</p>'}
+                    {f'<p style="margin-top: 10px; color: #6c757d; font-size: 14px;">📍 Exact location: {location["latitude"]:.6f}, {location["longitude"]:.6f}</p>' if location else ''}
                 </div>
 
                 <div class="info-card map-container">
@@ -431,6 +439,20 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
         else:
             print(f"Detection image not attached - path: {image_path}, exists: {os.path.exists(image_path) if image_path else False}")
 
+        # Attach logo image
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'logo2.jpg')
+        if os.path.exists(logo_path):
+            print(f"Attaching logo image: {logo_path}")
+            with open(logo_path, 'rb') as f:
+                logo_data = f.read()
+
+            logo_img = MIMEImage(logo_data, name="logo.jpg")
+            logo_img.add_header('Content-ID', '<logo_image>')
+            msg.attach(logo_img)
+            print("Logo attached")
+        else:
+            print(f"Logo not found at: {logo_path}")
+
         # Attach map image if generated
         if map_path and os.path.exists(map_path):
             print(f"Attaching map image: {map_path}")
@@ -459,7 +481,7 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
         traceback.print_exc()
         return False, error_msg
 
-# ============= API ENDPOINTS FOR REACT INTEGRATION =============
+#  API ENDPOINTS FOR REACT INTEGRATION 
 
 @app.route(f'{API_PREFIX}/health', methods=['GET'])
 def api_health():

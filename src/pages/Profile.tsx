@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { User, Shield, Save } from 'lucide-react';
+import { User, Shield, Save, LogOut } from 'lucide-react';
+import MobileNavigation from '../components/MobileNavigation';
+// import UserProfileCard from '../components/UserProfileCard'; // Removed from profile settings
 
 const Profile: React.FC = () => {
+  const navigate = useNavigate();
   const {
     currentUser,
     govUser,
@@ -10,7 +14,9 @@ const Profile: React.FC = () => {
     updateUserProfile,
     updateGovProfile,
     getBadge,
-    reports
+    reports,
+    logout,
+    setGovLocation
   } = useAppStore();
   
   // Citizen user state
@@ -20,9 +26,11 @@ const Profile: React.FC = () => {
   
   // Government user state
   const [govName, setGovName] = useState(govUser?.name || '');
-  const [govLocation, setGovLocation] = useState(
+  const [govAddress, setGovAddress] = useState(
     govUser ? `${govUser.location.lat}, ${govUser.location.lng}` : ''
   );
+  const [govLatitude, setGovLatitude] = useState(govUser?.location.lat.toString() || '');
+  const [govLongitude, setGovLongitude] = useState(govUser?.location.lng.toString() || '');
   const [govPhone, setGovPhone] = useState(govUser?.phone || '');
   const [govEmail, setGovEmail] = useState(govUser?.email || '');
   
@@ -75,21 +83,33 @@ const Profile: React.FC = () => {
   };
   
   const handleGovSave = () => {
-    if (!govName || !govLocation || !govPhone || !govEmail) {
+    if (!govName || !govAddress || !govPhone || !govEmail || !govLatitude || !govLongitude) {
       setError('All fields are required');
       return;
     }
-    
-    // Parse location
-    const [lat, lng] = govLocation.split(',').map(coord => parseFloat(coord.trim()));
+
+    // Parse latitude and longitude
+    const lat = parseFloat(govLatitude);
+    const lng = parseFloat(govLongitude);
+
     if (isNaN(lat) || isNaN(lng)) {
-      setError('Please enter valid coordinates (latitude, longitude)');
+      setError('Please enter valid latitude and longitude values');
       return;
     }
-    
+
+    if (lat < -90 || lat > 90) {
+      setError('Latitude must be between -90 and 90');
+      return;
+    }
+
+    if (lng < -180 || lng > 180) {
+      setError('Longitude must be between -180 and 180');
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
-    
+
     try {
       updateGovProfile({
         name: govName,
@@ -97,7 +117,7 @@ const Profile: React.FC = () => {
         phone: govPhone,
         email: govEmail
       });
-      
+
       setSuccessMessage('Profile updated successfully');
       setIsEditing(false);
     } catch {
@@ -114,33 +134,55 @@ const Profile: React.FC = () => {
       setAge(currentUser.age.toString());
       setEmail(currentUser.email);
     }
-    
+
     if (govUser) {
       setGovName(govUser.name);
-      setGovLocation(`${govUser.location.lat}, ${govUser.location.lng}`);
+      setGovAddress(`${govUser.location.lat}, ${govUser.location.lng}`);
+      setGovLatitude(govUser.location.lat.toString());
+      setGovLongitude(govUser.location.lng.toString());
       setGovPhone(govUser.phone);
       setGovEmail(govUser.email);
     }
-    
+
     setIsEditing(false);
     setError(null);
     setSuccessMessage(null);
   };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   
   return (
-    <div className="max-w-lg mx-auto p-6 animate-fade-in">
-      <div className="flex items-center mb-6 animate-pop-in">
-        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mr-4">
-          {isGovUser ? (
-            <Shield className="h-6 w-6 text-blue-500" />
-          ) : (
-            <User className="h-6 w-6 text-blue-500" />
-          )}
+    <div className="min-h-screen bg-gray-50">
+      <MobileNavigation />
+
+      {/* Desktop sidebar spacing */}
+      <div className="md:pl-64">
+        <div className="max-w-lg mx-auto p-6 animate-fade-in">
+        <div className="flex items-center justify-between mb-6 animate-pop-in">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mr-4">
+              {isGovUser ? (
+                <Shield className="h-6 w-6 text-blue-500" />
+              ) : (
+                <User className="h-6 w-6 text-blue-500" />
+              )}
+            </div>
+            <h1 className="text-2xl font-bold">
+              {isGovUser ? 'Government Profile' : 'Edit Profile'}
+            </h1>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+          >
+            <LogOut size={18} className="mr-2" />
+            Logout
+          </button>
         </div>
-        <h1 className="text-2xl font-bold">
-          {isGovUser ? 'Government Profile' : 'User Profile'}
-        </h1>
-      </div>
       
       {successMessage && (
         <div className="mb-6 p-3 bg-green-100 text-green-700 rounded-lg animate-fade-in">
@@ -227,22 +269,69 @@ const Profile: React.FC = () => {
               </div>
               
               <div>
-                <label htmlFor="govLocation" className="block text-sm font-medium text-gray-700 mb-1">
-                  Location (Latitude, Longitude)
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Office Address
                 </label>
                 {isEditing ? (
                   <input
                     type="text"
-                    id="govLocation"
-                    value={govLocation}
-                    onChange={(e) => setGovLocation(e.target.value)}
+                    value={govAddress}
+                    onChange={(e) => setGovAddress(e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded-md"
-                    placeholder="40.7128, -74.0060"
+                    placeholder="Enter office address"
                   />
                 ) : (
-                  <p className="p-2 bg-gray-50 rounded-md">{govLocation}</p>
+                  <p className="p-2 bg-gray-50 rounded-md">{govAddress}</p>
                 )}
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="govLatitude" className="block text-sm font-medium text-gray-700 mb-1">
+                    Latitude
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="any"
+                      id="govLatitude"
+                      value={govLatitude}
+                      onChange={(e) => setGovLatitude(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="40.7128"
+                      min="-90"
+                      max="90"
+                    />
+                  ) : (
+                    <p className="p-2 bg-gray-50 rounded-md">{govLatitude}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="govLongitude" className="block text-sm font-medium text-gray-700 mb-1">
+                    Longitude
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="any"
+                      id="govLongitude"
+                      value={govLongitude}
+                      onChange={(e) => setGovLongitude(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="-74.0060"
+                      min="-180"
+                      max="180"
+                    />
+                  ) : (
+                    <p className="p-2 bg-gray-50 rounded-md">{govLongitude}</p>
+                  )}
+                </div>
+              </div>
+              {isEditing && (
+                <p className="text-xs text-gray-500 -mt-2">
+                  These coordinates determine your 5km radius assignment
+                </p>
+              )}
               
               <div>
                 <label htmlFor="govPhone" className="block text-sm font-medium text-gray-700 mb-1">
@@ -358,7 +447,9 @@ const Profile: React.FC = () => {
               </button>
             </div>
           )}
+          </div>
         </div>
+      </div>
       </div>
     </div>
   );

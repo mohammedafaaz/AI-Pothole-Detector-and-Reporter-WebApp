@@ -4,7 +4,6 @@ import { Camera } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Detection } from '../types';
 import { getCurrentLocation, getAddressFromCoordinates } from '../utils/location';
-import { sendReportConfirmation } from '../utils/email';
 import CameraCapture from './CameraCapture';
 import usePotholeDetection from '../hooks/usePotholeDetection';
 import DetectionProgressBar from './DetectionProgressBar';
@@ -205,14 +204,6 @@ const ReportForm: React.FC = () => {
       
       // Add report to store
       addReport(reportData);
-      
-      // Send confirmation email
-      await sendReportConfirmation(
-        currentUser.email,
-        currentUser.name,
-        `report-${Date.now()}`,
-        address
-      );
       
       // Navigate to home page
       navigate('/home');

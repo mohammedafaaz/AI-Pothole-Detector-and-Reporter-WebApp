@@ -16,6 +16,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isGovView = false }) =>
     updateReport
   } = useAppStore();
 
+
   const hasUpvoted = currentUser ? report.upvotedBy?.includes(currentUser.id) || false : false;
   const hasDownvoted = currentUser ? report.downvotedBy?.includes(currentUser.id) || false : false;
   
@@ -36,7 +37,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isGovView = false }) =>
   };
   
   const handleFixingStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    updateReport(report.id, { fixingStatus: e.target.value as 'pending' | 'in_progress' | 'resolved' });
+    updateReport(report.id, { fixingStatus: e.target.value as 'pending' | 'in_progress' | 'resolved' | 'rejected' });
   };
   
   return (
@@ -149,6 +150,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isGovView = false }) =>
                 <option value="pending">Pending</option>
                 <option value="in_progress">In Progress</option>
                 <option value="resolved">Resolved</option>
+                <option value="rejected">Rejected</option>
               </select>
             </div>
           </div>

@@ -24,9 +24,20 @@ dist-ssr
 *.sw?
 .env
 
-# Python API (will be deployed separately)
+# Python API
 api/venv/
 api/__pycache__/
 api/*.pyc
 api/*.pyo
 api/static/annotated/*
+api/static/uploads/*
+api/static/outputs/*
+api/.env
+api/best.pt
+*.pt
+*.pth
+
+# Environment files
+.env.local
+.env.production
+.env.development

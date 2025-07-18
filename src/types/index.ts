@@ -40,7 +40,7 @@ export interface Report {
   upvotedBy: string[]; // Array of user IDs who upvoted
   downvotedBy: string[]; // Array of user IDs who downvoted
   verified: 'pending' | 'verified' | 'rejected';
-  fixingStatus: 'pending' | 'in_progress' | 'resolved';
+  fixingStatus: 'pending' | 'in_progress' | 'resolved' | 'rejected';
   originalPhoto?: string; // Original photo before annotation
   annotatedImageUrl?: string; // URL to Flask API annotated image
 }

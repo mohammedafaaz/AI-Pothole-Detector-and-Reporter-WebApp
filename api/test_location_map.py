@@ -143,8 +143,8 @@ def main():
     # Summary
     print("\n" + "=" * 50)
     print("📊 TEST RESULTS:")
-    print(f"Mapbox Token: {'✅ VALID' if token_valid else '❌ INVALID'}")
-    print(f"Map Generation: {'✅ SUCCESS' if map_success else '❌ FAILED'}")
+    print(f"Mapbox Token: {'VALID' if token_valid else 'INVALID'}")
+    print(f"Map Generation: {'SUCCESS' if map_success else 'FAILED'}")
     
     if token_valid and map_success:
         print("\n🎉 Location and map functionality is working!")

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { MapPin, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -24,12 +24,18 @@ const Login: React.FC = () => {
     }
 
     if (isRegister) {
+      // Prevent government account registration
+      if (activeTab === 'government') {
+        setError('Government account registration is restricted. Please contact your administrator for access.');
+        return;
+      }
+
       if (password !== confirmPassword) {
         setError('Passwords do not match');
         return;
       }
-      
-      const success = register(email, password, activeTab === 'government');
+
+      const success = register(email, password, false); // Always false for citizen registration
       if (success) {
         navigate('/profile-setup');
       } else {
@@ -38,8 +44,17 @@ const Login: React.FC = () => {
     } else {
       const success = signIn(email, password);
       if (success) {
-        // Let App.tsx handle the redirect based on user role and setup status
-        navigate('/login');
+        // Get the updated state after sign in
+        const { isGovUser, hasCompletedSetup } = useAppStore.getState();
+
+        // Navigate based on user type and setup status
+        if (!hasCompletedSetup) {
+          navigate('/profile-setup');
+        } else if (isGovUser) {
+          navigate('/gov-home');
+        } else {
+          navigate('/home');
+        }
       } else {
         setError('Invalid email or password');
       }
@@ -47,34 +62,43 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${
-      activeTab === 'government' ? 'gov-gradient' : 'dark-gradient'
-    }`}>
-      <div className="max-w-md w-full glass rounded-lg shadow-xl overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100">
+      <div className="max-w-md w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-white/20">
         <div className="p-6 md:p-8">
-          <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-green-500/30 transition-colors">
-           <MapPin className="h-8 w-8 text-yellow-400" />
+          <div className="w-28 h-28 flex items-center justify-center mx-auto mb-6 bg-gray-50 rounded-2xl">
+            <img
+              src="/logo.jpg"
+              alt="FixMyPothole.AI Logo"
+              className="w-24 h-24 object-contain"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-center mb-6 text-white">Pothole Reporter</h1>
-          
-          <div className="flex mb-6 bg-black/30 rounded-lg p-1">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">FixMyPothole.AI</h1>
+            <p className="text-sm text-gray-600">AI Powered Pothole Detecting & Reporting System</p>
+          </div>
+
+          <div className="flex mb-8 bg-gray-100 rounded-xl p-1">
             <button
-              className={`flex-1 py-2 text-center rounded-md transition-all ${
-                activeTab === 'citizen' 
-                  ? 'bg-blue-500/80 text-white shadow-lg' 
-                  : 'text-blue-200 hover:text-white'
+              className={`flex-1 py-3 text-center rounded-lg font-medium transition-all ${
+                activeTab === 'citizen'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-blue-600'
               }`}
               onClick={() => setActiveTab('citizen')}
             >
               Citizen
             </button>
             <button
-              className={`flex-1 py-2 text-center rounded-md transition-all ${
-                activeTab === 'government' 
-                  ? 'bg-red-600/80 text-white shadow-lg' 
-                  : 'text-red-200 hover:text-red'
+              className={`flex-1 py-3 text-center rounded-lg font-medium transition-all ${
+                activeTab === 'government'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-red-600'
               }`}
-              onClick={() => setActiveTab('government')}
+              onClick={() => {
+                setActiveTab('government');
+                setIsRegister(false); // Force sign-in mode for government
+                setError(null); // Clear any existing errors
+              }}
             >
               Government
             </button>
@@ -82,29 +106,29 @@ const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit}>
             {error && (
-              <div className="mb-4 p-3 bg-red-500/20 rounded-md flex items-center text-red-200">
-                <AlertCircle className="h-5 w-5 mr-2" />
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
+                <AlertCircle className="h-5 w-5 mr-3 text-red-500" />
                 {error}
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-white mb-1">
-                  Email
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
                 </label>
                 <input
                   type="email"
                   id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-2 bg-black/30 border border-white rounded-md text-white"
+                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter your email"
                 />
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-white mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                   Password
                 </label>
                 <input
@@ -112,14 +136,14 @@ const Login: React.FC = () => {
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-2 bg-black/30 border border-white rounded-md text-white"
+                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="••••••••"
                 />
               </div>
 
               {isRegister && (
                 <div>
-                  <label htmlFor="confirm-password" className="block text-sm font-medium text-white mb-1">
+                  <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
                     Confirm Password
                   </label>
                   <input
@@ -127,7 +151,7 @@ const Login: React.FC = () => {
                     id="confirm-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full p-2 bg-black/30 border border-white rounded-md text-white"
+                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     placeholder="••••••••"
                   />
                 </div>
@@ -135,18 +159,27 @@ const Login: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full bg-white text-black py-2 px-4 rounded-md hover:bg-black/50 hover:text-white "
+                className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${
+                  activeTab === 'citizen'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                    : 'bg-red-600 hover:bg-red-700 text-white shadow-sm'
+                }`}
               >
-                {isRegister ? 'Register' : 'Sign In'}
+                {isRegister ? 'Create Account' : 'Sign In'}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsRegister(!isRegister)}
-                className="w-full text-white hover:text-blue-300"
-              >
-                {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Register"}
-              </button>
+              {/* Only show registration toggle for citizen accounts */}
+              {activeTab === 'citizen' && (
+                <button
+                  type="button"
+                  onClick={() => setIsRegister(!isRegister)}
+                  className="w-full text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Register"}
+                </button>
+              )}
+
+
             </div>
           </form>
         </div>

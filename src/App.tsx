@@ -2,14 +2,15 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import ProfileSetup from './pages/ProfileSetup';
-import Home from './pages/Home';
+// import Home from './pages/Home'; // Removed - using ModernHome instead
+import ModernHome from './pages/ModernHome';
 import GovDashboard from './pages/GovDashboard';
+import ModernDashboard from './pages/ModernDashboard';
 import Profile from './pages/Profile';
 import NewReport from './pages/NewReport';
 import Notifications from './pages/Notifications';
 import { useAppStore } from './store';
 import { loadModel } from './utils/detection';
-import Layout from './components/Layout';
 
 const App: React.FC = () => {
   const { isLoggedIn, isGovUser, hasCompletedSetup, initAuth } = useAppStore();
@@ -26,7 +27,7 @@ const App: React.FC = () => {
           isLoggedIn ? (
             <Navigate to={
               !hasCompletedSetup ? '/profile-setup' :
-              isGovUser ? '/gov-dashboard' : '/home'
+              isGovUser ? '/gov-home' : '/home'
             } />
           ) : (
             <Navigate to="/login" />
@@ -36,37 +37,65 @@ const App: React.FC = () => {
           isLoggedIn ? (
             <Navigate to={
               !hasCompletedSetup ? '/profile-setup' :
-              isGovUser ? '/gov-dashboard' : '/home'
+              isGovUser ? '/gov-dashboard' : '/dashboard'
             } />
           ) : (
             <Login />
           )
         } />
 
-        <Route element={isLoggedIn ? <Layout /> : <Navigate to="/login" />}>
-          <Route path="/profile-setup" element={
-            !hasCompletedSetup ? <ProfileSetup /> : 
-            <Navigate to={isGovUser ? "/gov-dashboard" : "/home"} />
-          } />
-          
-          {/* Protected Routes */}
-          <Route path="/home" element={
-            !isGovUser && hasCompletedSetup ? <Home /> : 
-            <Navigate to={isGovUser ? "/gov-dashboard" : "/login"} />
-          } />
-          <Route path="/gov-dashboard" element={
-            isGovUser && hasCompletedSetup ? <GovDashboard /> : 
-            <Navigate to={isGovUser ? "/login" : "/home"} />
-          } />
-          <Route path="/profile" element={
-            hasCompletedSetup ? <Profile /> : <Navigate to="/profile-setup" />
-          } />
-          <Route path="/new-report" element={
-            !isGovUser && hasCompletedSetup ? <NewReport /> : 
-            <Navigate to="/login" />
-          } />
-          <Route path="/notifications" element={<Notifications />} />
-        </Route>
+        {/* Home pages - standalone with their own navigation */}
+        <Route path="/home" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <ModernHome /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/gov-home"} />
+        } />
+
+        <Route path="/gov-home" element={
+          isLoggedIn && isGovUser && hasCompletedSetup ? <ModernHome /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/home"} />
+        } />
+
+        {/* Reports pages - standalone with their own navigation */}
+        <Route path="/dashboard" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <ModernDashboard /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/gov-dashboard"} />
+        } />
+
+        <Route path="/gov-dashboard" element={
+          isLoggedIn && isGovUser && hasCompletedSetup ? <GovDashboard /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/dashboard"} />
+        } />
+
+        {/* Map view - redirect to dashboard for now */}
+        <Route path="/map" element={
+          isLoggedIn && hasCompletedSetup ? <Navigate to={isGovUser ? "/gov-dashboard" : "/dashboard"} /> :
+          <Navigate to={!isLoggedIn ? "/login" : "/profile-setup"} />
+        } />
+
+        {/* Standalone routes */}
+        <Route path="/profile-setup" element={
+          isLoggedIn && !hasCompletedSetup ? <ProfileSetup /> :
+          <Navigate to={!isLoggedIn ? "/login" : isGovUser ? "/gov-home" : "/home"} />
+        } />
+
+        <Route path="/profile" element={
+          isLoggedIn && hasCompletedSetup ? <Profile /> :
+          <Navigate to={!isLoggedIn ? "/login" : "/profile-setup"} />
+        } />
+
+        <Route path="/report" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <NewReport /> :
+          <Navigate to="/login" />
+        } />
+
+        <Route path="/new-report" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <NewReport /> :
+          <Navigate to="/login" />
+        } />
+
+        <Route path="/notifications" element={
+          isLoggedIn ? <Notifications /> : <Navigate to="/login" />
+        } />
       </Routes>
     </BrowserRouter>
   );

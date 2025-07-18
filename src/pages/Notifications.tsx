@@ -1,19 +1,22 @@
 // filepath: d:\PotholeProject\project\src\pages\Notifications.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store';
-import { Check, ThumbsUp } from 'lucide-react';
+import { Check, ThumbsUp, Trash2, X } from 'lucide-react';
+import MobileNavigation from '../components/MobileNavigation';
 
 const Notifications: React.FC = () => {
   const {
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
+    deleteNotification,
     sendComplimentToGov,
     currentUser,
     isGovUser,
     govUser,
   } = useAppStore();
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleThanks = (notifId: string) => {
     if (currentUser) {
@@ -21,10 +24,19 @@ const Notifications: React.FC = () => {
     }
   };
 
+  const handleDeleteNotification = (notifId: string) => {
+    setDeletingId(notifId);
+    // Add a small delay for visual feedback
+    setTimeout(() => {
+      deleteNotification(notifId);
+      setDeletingId(null);
+    }, 150);
+  };
+
   const filteredNotifications = notifications.filter(n => {
     if (isGovUser && govUser) {
-      // Government users see notifications assigned to them and compliments
-      return n.govUserId === govUser.id || n.type === 'compliment';
+      // Government users see notifications assigned to them or compliments sent to them
+      return n.govUserId === govUser.id || (n.type === 'compliment' && n.govUserId === govUser.id);
     } else if (currentUser) {
       // Regular users see their own notifications (exclude compliments which are for gov users)
       return (n.userId === currentUser.id || !n.userId) && n.type !== 'compliment';
@@ -33,7 +45,12 @@ const Notifications: React.FC = () => {
   });
 
   return (
-    <div className="max-w-2xl mx-auto py-10 px-4">
+    <div className="min-h-screen bg-gray-50">
+      <MobileNavigation />
+
+      {/* Desktop sidebar spacing */}
+      <div className="md:pl-64">
+        <div className="max-w-2xl mx-auto py-10 px-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-blue-700">Notifications</h1>
         <button
@@ -74,6 +91,7 @@ const Notifications: React.FC = () => {
               {n.type === 'resolved' &&
                 currentUser &&
                 !isGovUser &&
+                n.userId === currentUser.id && // Only show to the original reporter
                 (!n.complimentedBy || !n.complimentedBy.includes(currentUser.id)) && (
                   <button
                     className="flex items-center gap-1 text-green-600 hover:text-green-800 border border-green-200 px-2 py-1 rounded text-xs"
@@ -90,15 +108,35 @@ const Notifications: React.FC = () => {
               )}
               {n.type === 'resolved' &&
                 currentUser &&
+                n.userId === currentUser.id && // Only show to the original reporter
                 n.complimentedBy &&
                 n.complimentedBy.includes(currentUser.id) && (
                   <span className="text-green-700 text-xs flex items-center gap-1">
                     <ThumbsUp size={14} /> Thanked
                   </span>
                 )}
+
+              {/* Delete button - always available */}
+              <button
+                className={`text-red-500 hover:text-red-700 transition-all duration-150 ${
+                  deletingId === n.id ? 'opacity-50 scale-90' : 'hover:scale-110'
+                }`}
+                onClick={() => handleDeleteNotification(n.id)}
+                disabled={deletingId === n.id}
+                aria-label="Delete notification"
+                title="Delete notification"
+              >
+                {deletingId === n.id ? (
+                  <X size={18} className="animate-spin" />
+                ) : (
+                  <Trash2 size={18} />
+                )}
+              </button>
             </div>
           </div>
         ))}
+      </div>
+        </div>
       </div>
     </div>
   );

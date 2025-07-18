@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, GovUser, Report, Badge } from '../types';
 
-interface Notification {
+
+export interface AppNotification {
   id: string;
   message: string;
   read: boolean;
@@ -23,6 +24,7 @@ interface AppState {
   userEmail: string | null;
   reports: Report[];
   userLocation: { lat: number; lng: number } | null;
+  govLocation: { lat: number; lng: number } | null;
   hasCompletedSetup: boolean;
   authenticatedUsers: {
     [email: string]: {
@@ -32,10 +34,11 @@ interface AppState {
       userData: User | GovUser | null;
     };
   };
-  notifications: Notification[];
-  addNotification: (notif: Omit<Notification, 'id' | 'read' | 'createdAt' | 'complimentedBy'> & Partial<Pick<Notification, 'complimentedBy'>>) => void;
+  notifications: AppNotification[];
+  addNotification: (notif: Omit<AppNotification, 'id' | 'read' | 'createdAt' | 'complimentedBy'> & Partial<Pick<AppNotification, 'complimentedBy'>>) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  deleteNotification: (id: string) => void;
   sendComplimentToGov: (notifId: string, userId: string) => void;
 
   // Actions
@@ -52,11 +55,100 @@ interface AppState {
   updateUserProfile: (updates: Partial<Omit<User, 'id' | 'reports' | 'points' | 'createdAt'>>) => void;
   updateGovProfile: (updates: Partial<Omit<GovUser, 'id' | 'createdAt'>>) => void;
   setUserLocation: (location: { lat: number; lng: number } | null) => void;
+  setGovLocation: (location: { lat: number; lng: number } | null) => void;
   getBadge: (points: number) => Badge;
+
+  // Note: Database API methods removed - using localStorage only
 }
 
-export const useAppStore = create<AppState>()(
-  persist(
+// Default authenticated users that should always be available
+const defaultAuthenticatedUsers = {
+  // Test users for development
+  'citizen@test.com': {
+    password: 'password',
+    isGov: false,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'test-citizen-1',
+      name: 'John Citizen',
+      age: 30,
+      email: 'citizen@test.com',
+      points: 25,
+      badge: 'bronze' as Badge,
+      reports: [],
+      createdAt: new Date()
+    } as User
+  },
+  'gov@test.com': {
+    password: 'password',
+    isGov: true,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'test-gov-1',
+      name: 'City Government',
+      location: { lat: 40.7128, lng: -74.0060 },
+      phone: '+1-555-0123',
+      email: 'gov@test.com',
+      createdAt: new Date()
+    } as GovUser
+  },
+  // Additional government test accounts
+  'admin@cityworks.gov': {
+    password: 'CityAdmin2024!',
+    isGov: true,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'gov-admin-1',
+      name: 'City Works Department',
+      location: { lat: 34.0522, lng: -118.2437 },
+      phone: '+1-555-0200',
+      email: 'admin@cityworks.gov',
+      createdAt: new Date()
+    } as GovUser
+  },
+  'roads@municipal.gov': {
+    password: 'RoadMaint2024!',
+    isGov: true,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'gov-roads-1',
+      name: 'Municipal Roads Department',
+      location: { lat: 41.8781, lng: -87.6298 },
+      phone: '+1-555-0300',
+      email: 'roads@municipal.gov',
+      createdAt: new Date()
+    } as GovUser
+  },
+  'infrastructure@metro.gov': {
+    password: 'MetroInfra2024!',
+    isGov: true,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'gov-metro-1',
+      name: 'Metro Infrastructure Authority',
+      location: { lat: 39.7392, lng: -104.9903 },
+      phone: '+1-555-0400',
+      email: 'infrastructure@metro.gov',
+      createdAt: new Date()
+    } as GovUser
+  },
+  'public.works@county.gov': {
+    password: 'CountyPW2024!',
+    isGov: true,
+    hasCompletedSetup: true,
+    userData: {
+      id: 'gov-county-1',
+      name: 'County Public Works',
+      location: { lat: 33.4484, lng: -112.0740 },
+      phone: '+1-555-0500',
+      email: 'public.works@county.gov',
+      createdAt: new Date()
+    } as GovUser
+  }
+};
+
+export const useAppStore = create(
+  persist<AppState>(
     (set, get) => ({
       // Initial state
       isLoggedIn: false,
@@ -65,12 +157,13 @@ export const useAppStore = create<AppState>()(
       govUser: null,
       reports: [],
       userLocation: null,
+      govLocation: null,
       hasCompletedSetup: false,
       userEmail: null,
-      authenticatedUsers: {},
+      authenticatedUsers: defaultAuthenticatedUsers,
       notifications: [],
-      addNotification: (notif) =>
-        set((state) => ({
+      addNotification: (notif: any) =>
+        set((state: any) => ({
           notifications: [
             {
               id: `notif-${Date.now()}-${Math.random()}`,
@@ -83,11 +176,11 @@ export const useAppStore = create<AppState>()(
             ...state.notifications,
           ],
         })),
-      markNotificationRead: (id) =>
-        set((state) => {
+      markNotificationRead: (id: string) =>
+        set((state: any) => {
           const { currentUser, isGovUser, govUser } = state;
           return {
-            notifications: state.notifications.map((n) =>
+            notifications: state.notifications.map((n: any) =>
               n.id === id &&
               (
                 (!isGovUser && (!n.userId || n.userId === currentUser?.id)) ||
@@ -99,10 +192,10 @@ export const useAppStore = create<AppState>()(
           };
         }),
       markAllNotificationsRead: () =>
-        set((state) => {
+        set((state: any) => {
           const { currentUser, isGovUser, govUser } = state;
           return {
-            notifications: state.notifications.map((n) =>
+            notifications: state.notifications.map((n: any) =>
               (
                 (!isGovUser && (!n.userId || n.userId === currentUser?.id)) ||
                 (isGovUser && n.govUserId === govUser?.id)
@@ -112,16 +205,36 @@ export const useAppStore = create<AppState>()(
             ),
           };
         }),
-      sendComplimentToGov: (notifId, userId) =>
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
+
+      deleteNotification: (id: string) =>
+        set((state: any) => {
+          const { currentUser, isGovUser, govUser } = state;
+          return {
+            notifications: state.notifications.filter((n: any) => {
+              // Only delete if the notification belongs to the current user
+              if (n.id !== id) return true; // Keep all other notifications
+
+              // Check if this notification belongs to the current user
+              if (isGovUser && govUser) {
+                return !(n.govUserId === govUser.id || (n.type === 'compliment' && n.govUserId === govUser.id));
+              } else if (currentUser) {
+                return !((n.userId === currentUser.id || !n.userId) && n.type !== 'compliment');
+              }
+
+              return true; // Keep notification if user check fails
+            }),
+          };
+        }),
+      sendComplimentToGov: (notifId: string, userId: string) =>
+        set((state: any) => ({
+          notifications: state.notifications.map((n: any) =>
             n.id === notifId && n.type === 'resolved'
               ? { ...n, complimentedBy: [...(n.complimentedBy || []), userId] }
               : n
           ).concat(
             // Send compliment notification to government user
             (() => {
-              const notif = state.notifications.find(n => n.id === notifId);
+              const notif = state.notifications.find((n: any) => n.id === notifId);
               if (notif && notif.govUserId) {
                 return [{
                   id: `notif-${Date.now()}-${Math.random()}`,
@@ -138,7 +251,7 @@ export const useAppStore = create<AppState>()(
         })),
 
       // Actions
-      register: (email, password, isGov) => {
+      register: (email: string, password: string, isGov: boolean) => {
         const state = get();
         if (state.authenticatedUsers[email]) return false;
 
@@ -159,20 +272,30 @@ export const useAppStore = create<AppState>()(
         return true;
       },
 
-      signIn: (email, password) => {
+      signIn: (email: string, password: string) => {
         const state = get();
         const user = state.authenticatedUsers[email];
-        
-        if (!user || user.password !== password) return false;
-        
-        set({
+
+        if (!user || user.password !== password) {
+          return false;
+        }
+
+        const newState: any = {
           isLoggedIn: true,
           isGovUser: user.isGov,
           hasCompletedSetup: user.hasCompletedSetup,
           userEmail: email,
           currentUser: !user.isGov ? user.userData as User : null,
           govUser: user.isGov ? user.userData as GovUser : null
-        });
+        };
+
+        // Set government location if it's a gov user
+        if (user.isGov && user.userData) {
+          const govData = user.userData as GovUser;
+          newState.govLocation = govData.location;
+        }
+
+        set(newState);
 
         return true;
       },
@@ -184,6 +307,7 @@ export const useAppStore = create<AppState>()(
           currentUser: null,
           govUser: null,
           userLocation: null,
+          govLocation: null,
           hasCompletedSetup: false,
           userEmail: null
         });
@@ -195,18 +319,26 @@ export const useAppStore = create<AppState>()(
         if (email) {
           const user = state.authenticatedUsers[email];
           if (user) {
-            set({
+            const newState: any = {
               isLoggedIn: true,
               isGovUser: user.isGov,
               hasCompletedSetup: user.hasCompletedSetup,
               currentUser: !user.isGov ? user.userData as User : null,
               govUser: user.isGov ? user.userData as GovUser : null
-            });
+            };
+
+            // Set government location if it's a gov user
+            if (user.isGov && user.userData) {
+              const govData = user.userData as GovUser;
+              newState.govLocation = govData.location;
+            }
+
+            set(newState);
           }
         }
       },
 
-      createUser: (userData) => set(state => {
+      createUser: (userData: any) => set((state: any) => {
         const email = state.userEmail;
         if (!email) return {};
 
@@ -233,7 +365,7 @@ export const useAppStore = create<AppState>()(
         };
       }),
 
-      createGovUser: (userData) => set(state => {
+      createGovUser: (userData: any) => set((state: any) => {
         const email = state.userEmail;
         if (!email) return {};
 
@@ -257,14 +389,20 @@ export const useAppStore = create<AppState>()(
         };
       }),
       
-      addReport: (reportData) => set((state) => {
+      addReport: (reportData: any) => set((state: any) => {
+        // Only allow logged-in users to create reports
+        if (!state.currentUser) {
+          console.error('Cannot create report: User not logged in');
+          return {};
+        }
+
         // Exclude userId and voting arrays from reportData to avoid duplicate keys
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { userId, upvotedBy, downvotedBy, ...restReportData } = reportData;
         const newReport: Report = {
           id: `report-${Date.now()}`,
-          userName: state.currentUser?.name || 'Anonymous',
-          userId: state.currentUser?.id || 'anonymous',
+          userName: state.currentUser.name,
+          userId: state.currentUser.id,
           createdAt: new Date(),
           upvotes: 0,
           downvotes: 0,
@@ -277,19 +415,56 @@ export const useAppStore = create<AppState>()(
         const locationText = newReport.location.address
           ? newReport.location.address
           : `${newReport.location.lat.toFixed(4)}, ${newReport.location.lng.toFixed(4)}`;
-        // Add a notification for all users except the reporter
-        const allUserNotifications: Notification[] = Object.values(state.authenticatedUsers)
-          .filter(u => u.userData && (u.userData as User).id !== newReport.userId && !u.isGov)
-          .map(u => ({
-            id: `notif-${Date.now()}-${Math.random()}`,
-            message: `New pothole reported at ${locationText}.`,
-            read: false,
-            createdAt: new Date(),
-            type: 'new_report',
-            reportId: newReport.id,
-            location: { lat: newReport.location.lat, lng: newReport.location.lng },
-            userId: (u.userData as User).id,
-          } as Notification));
+
+        // Add notifications for all users except the reporter
+        const allUserNotifications: AppNotification[] = [];
+
+        // Notify all citizens except the reporter
+        Object.values(state.authenticatedUsers)
+          .filter((u: any) => u.userData && (u.userData as User).id !== newReport.userId && !u.isGov)
+          .forEach((u: any) => {
+            allUserNotifications.push({
+              id: `notif-${Date.now()}-${Math.random()}-citizen-${(u.userData as User).id}`,
+              message: `New pothole reported at ${locationText}.`,
+              read: false,
+              createdAt: new Date(),
+              type: 'new_report',
+              reportId: newReport.id,
+              location: { lat: newReport.location.lat, lng: newReport.location.lng },
+              userId: (u.userData as User).id,
+            } as AppNotification);
+          });
+
+        // Notify government users within 5km radius
+        Object.values(state.authenticatedUsers)
+          .filter((u: any) => u.userData && u.isGov && (u.userData as GovUser).id !== newReport.userId)
+          .forEach((u: any) => {
+            const govData = u.userData as GovUser;
+
+            if (!govData.location) {
+              return;
+            }
+
+            // Calculate distance using proper formula
+            const distance = Math.sqrt(
+              Math.pow((newReport.location.lat - govData.location.lat) * 111, 2) +
+              Math.pow((newReport.location.lng - govData.location.lng) * 111 * Math.cos(govData.location.lat * Math.PI / 180), 2)
+            );
+
+            if (distance <= 5) { // Within 5km radius
+              allUserNotifications.push({
+                id: `notif-${Date.now()}-${Math.random()}-gov-${govData.id}`,
+                message: `New pothole reported at ${locationText} (within your area).`,
+                read: false,
+                createdAt: new Date(),
+                type: 'new_report',
+                reportId: newReport.id,
+                location: { lat: newReport.location.lat, lng: newReport.location.lng },
+                govUserId: govData.id,
+              } as AppNotification);
+            }
+          });
+
         // No points awarded for just submitting - only when verified
 
         return {
@@ -301,8 +476,8 @@ export const useAppStore = create<AppState>()(
         };
       }),
       
-      deleteReport: (reportId) => set((state) => {
-        const reportToDelete = state.reports.find(report => report.id === reportId);
+      deleteReport: (reportId: string) => set((state: any) => {
+        const reportToDelete = state.reports.find((report: any) => report.id === reportId);
 
         // If report was verified, deduct 1 point from the user
         if (reportToDelete && reportToDelete.verified === 'verified') {
@@ -335,7 +510,7 @@ export const useAppStore = create<AppState>()(
               };
 
               return {
-                reports: state.reports.filter(report => report.id !== reportId),
+                reports: state.reports.filter((report: any) => report.id !== reportId),
                 currentUser: state.currentUser?.id === updatedUser.id ? updatedUser : state.currentUser,
                 authenticatedUsers: {
                   ...state.authenticatedUsers,
@@ -350,16 +525,22 @@ export const useAppStore = create<AppState>()(
         }
 
         return {
-          reports: state.reports.filter(report => report.id !== reportId)
+          reports: state.reports.filter((report: any) => report.id !== reportId)
         };
       }),
       
-      updateReport: (reportId, updates) => set((state) => {
-        const updatedReports = state.reports.map(report => 
-          report.id === reportId ? { ...report, ...updates } : report
+      updateReport: (reportId: string, updates: any) => set((state: any) => {
+        // Auto-sync fixing status when verification is rejected
+        const syncedUpdates = { ...updates };
+        if (updates.verified === 'rejected' && !updates.fixingStatus) {
+          syncedUpdates.fixingStatus = 'rejected';
+        }
+
+        const updatedReports = state.reports.map((report: any) =>
+          report.id === reportId ? { ...report, ...syncedUpdates } : report
         );
         let notifications = state.notifications;
-        const updatedReport = updatedReports.find((r) => r.id === reportId);
+        const updatedReport = updatedReports.find((r: any) => r.id === reportId);
         if (updatedReport) {
           const locationText = updatedReport.location.address
             ? updatedReport.location.address
@@ -407,6 +588,7 @@ export const useAppStore = create<AppState>()(
             ];
           }
           if (updates.fixingStatus === 'resolved') {
+            // Notify the original reporter
             notifications = [
               {
                 id: `notif-${Date.now()}-${Math.random()}`,
@@ -417,6 +599,65 @@ export const useAppStore = create<AppState>()(
                 reportId,
                 govUserId: state.govUser?.id,
                 complimentedBy: [],
+                userId: updatedReport.userId,
+              },
+              ...notifications,
+            ];
+
+            // Notify ALL other users about the resolution (excluding the reporter)
+            const allUserNotifications: AppNotification[] = [];
+
+            // Notify all citizens except the reporter
+            Object.values(state.authenticatedUsers)
+              .filter((u: any) => u.userData && (u.userData as User).id !== updatedReport.userId && !u.isGov)
+              .forEach((u: any) => {
+                allUserNotifications.push({
+                  id: `notif-${Date.now()}-${Math.random()}-citizen-${(u.userData as User).id}`,
+                  message: `A pothole at ${locationText} has been resolved by the government.`,
+                  read: false,
+                  createdAt: new Date(),
+                  type: 'info',
+                  reportId,
+                  userId: (u.userData as User).id,
+                } as AppNotification);
+              });
+
+            // Notify government users within 5km radius (excluding the one who resolved it)
+            Object.values(state.authenticatedUsers)
+              .filter((u: any) => u.userData && u.isGov && (u.userData as GovUser).id !== state.govUser?.id)
+              .forEach((u: any) => {
+                const govData = u.userData as GovUser;
+                // Calculate distance using proper formula
+                const distance = Math.sqrt(
+                  Math.pow((updatedReport.location.lat - govData.location.lat) * 111, 2) +
+                  Math.pow((updatedReport.location.lng - govData.location.lng) * 111 * Math.cos(govData.location.lat * Math.PI / 180), 2)
+                );
+
+                if (distance <= 5) { // Within 5km radius
+                  allUserNotifications.push({
+                    id: `notif-${Date.now()}-${Math.random()}-gov-${govData.id}`,
+                    message: `A pothole at ${locationText} has been resolved by another government department.`,
+                    read: false,
+                    createdAt: new Date(),
+                    type: 'info',
+                    reportId,
+                    govUserId: govData.id,
+                  } as AppNotification);
+                }
+              });
+
+            notifications = [...allUserNotifications, ...notifications];
+          }
+
+          if (updates.fixingStatus === 'rejected') {
+            notifications = [
+              {
+                id: `notif-${Date.now()}-${Math.random()}`,
+                message: `Fixing request for pothole at ${locationText} was rejected by government.`,
+                read: false,
+                createdAt: new Date(),
+                type: 'info',
+                reportId,
                 userId: updatedReport.userId,
               },
               ...notifications,
@@ -471,12 +712,12 @@ export const useAppStore = create<AppState>()(
         return { reports: updatedReports, notifications };
       }),
       
-      voteReport: (reportId, vote) => {
+      voteReport: (reportId: string, vote: 'up' | 'down') => {
         const currentUser = get().currentUser;
         if (!currentUser) return;
 
-        set((state) => ({
-          reports: state.reports.map(report => {
+        set((state: any) => ({
+          reports: state.reports.map((report: any) => {
             if (report.id !== reportId) return report;
 
             const hasUpvoted = report.upvotedBy?.includes(currentUser.id) || false;
@@ -488,7 +729,7 @@ export const useAppStore = create<AppState>()(
                 return {
                   ...report,
                   upvotes: Math.max(0, report.upvotes - 1),
-                  upvotedBy: report.upvotedBy?.filter(id => id !== currentUser.id) || []
+                  upvotedBy: report.upvotedBy?.filter((id: any) => id !== currentUser.id) || []
                 };
               } else {
                 // Add upvote and remove downvote if exists
@@ -498,7 +739,7 @@ export const useAppStore = create<AppState>()(
                   downvotes: hasDownvoted ? Math.max(0, report.downvotes - 1) : report.downvotes,
                   upvotedBy: [...(report.upvotedBy || []), currentUser.id],
                   downvotedBy: hasDownvoted
-                    ? report.downvotedBy?.filter(id => id !== currentUser.id) || []
+                    ? report.downvotedBy?.filter((id: any) => id !== currentUser.id) || []
                     : report.downvotedBy || []
                 };
               }
@@ -508,7 +749,7 @@ export const useAppStore = create<AppState>()(
                 return {
                   ...report,
                   downvotes: Math.max(0, report.downvotes - 1),
-                  downvotedBy: report.downvotedBy?.filter(id => id !== currentUser.id) || []
+                  downvotedBy: report.downvotedBy?.filter((id: any) => id !== currentUser.id) || []
                 };
               } else {
                 // Add downvote and remove upvote if exists
@@ -518,7 +759,7 @@ export const useAppStore = create<AppState>()(
                   upvotes: hasUpvoted ? Math.max(0, report.upvotes - 1) : report.upvotes,
                   downvotedBy: [...(report.downvotedBy || []), currentUser.id],
                   upvotedBy: hasUpvoted
-                    ? report.upvotedBy?.filter(id => id !== currentUser.id) || []
+                    ? report.upvotedBy?.filter((id: any) => id !== currentUser.id) || []
                     : report.upvotedBy || []
                 };
               }
@@ -527,7 +768,7 @@ export const useAppStore = create<AppState>()(
         }));
       },
       
-      updateUserProfile: (updates) => set((state) => {
+      updateUserProfile: (updates: any) => set((state: any) => {
         const email = state.userEmail;
         if (!email || !state.currentUser) return {};
 
@@ -545,13 +786,13 @@ export const useAppStore = create<AppState>()(
         };
       }),
       
-      updateGovProfile: (updates) => set((state) => {
+      updateGovProfile: (updates: any) => set((state: any) => {
         const email = state.userEmail;
         if (!email || !state.govUser) return {};
 
         const updatedGovUser = { ...state.govUser, ...updates };
 
-        return {
+        const newState: any = {
           govUser: updatedGovUser,
           authenticatedUsers: {
             ...state.authenticatedUsers,
@@ -561,16 +802,27 @@ export const useAppStore = create<AppState>()(
             },
           },
         };
+
+        // Update govLocation if location was updated
+        if (updates.location) {
+          newState.govLocation = updates.location;
+        }
+
+        return newState;
       }),
       
-      setUserLocation: (location) => set({ userLocation: location }),
+      setUserLocation: (location: { lat: number; lng: number } | null) => set({ userLocation: location }),
+      setGovLocation: (location: { lat: number; lng: number } | null) => set({ govLocation: location }),
       
-      getBadge: (points) => {
+      getBadge: (points: number) => {
         if (points >= 100) return 'gold';
         if (points >= 50) return 'silver';
         if (points >= 25) return 'bronze';
         return 'none';
       },
+
+      // Note: Database API methods removed - using localStorage only
+
     }),
     {
       name: 'pothole-reporter-storage',
@@ -579,6 +831,19 @@ export const useAppStore = create<AppState>()(
         userEmail: state.userEmail,
         reports: state.reports,
         notifications: state.notifications,
+      }) as any,
+      merge: (persistedState: any, currentState: any) => ({
+        ...currentState,
+        ...persistedState,
+        // Always merge default users with persisted users
+        authenticatedUsers: {
+          ...defaultAuthenticatedUsers,
+          ...persistedState?.authenticatedUsers,
+        },
+        // Filter out anonymous reports from persisted data
+        reports: (persistedState?.reports || []).filter((report: any) =>
+          report.userName !== 'Anonymous' && report.userId !== 'anonymous'
+        ),
       }),
     }
   )

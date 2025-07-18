@@ -21,6 +21,8 @@ const ProfileSetup: React.FC = () => {
   const [govLocation, setGovLocation] = useState('');
   const [govPhone, setGovPhone] = useState('');
   const [govEmail, setGovEmail] = useState('');
+  const [govLatitude, setGovLatitude] = useState('');
+  const [govLongitude, setGovLongitude] = useState('');
   
   const [error, setError] = useState<string | null>(null);
   
@@ -50,27 +52,43 @@ const ProfileSetup: React.FC = () => {
   
   const handleGovSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!govName || !govLocation || !govPhone || !govEmail) {
+
+    if (!govName || !govLocation || !govPhone || !govEmail || !govLatitude || !govLongitude) {
       setError('All fields are required');
       return;
     }
-    
-    // Mock location parsing (in a real app, you'd use geocoding)
-    const [lat, lng] = govLocation.split(',').map(coord => parseFloat(coord.trim()));
+
+    // Parse latitude and longitude
+    const lat = parseFloat(govLatitude);
+    const lng = parseFloat(govLongitude);
+
     if (isNaN(lat) || isNaN(lng)) {
-      setError('Please enter valid coordinates (latitude, longitude)');
+      setError('Please enter valid latitude and longitude values');
       return;
     }
-    
+
+    if (lat < -90 || lat > 90) {
+      setError('Latitude must be between -90 and 90');
+      return;
+    }
+
+    if (lng < -180 || lng > 180) {
+      setError('Longitude must be between -180 and 180');
+      return;
+    }
+
     createGovUser({
       name: govName,
       location: { lat, lng },
       phone: govPhone,
       email: govEmail
     });
-    
-    navigate('/gov-dashboard');
+
+    // Set government location in store
+    const { setGovLocation } = useAppStore.getState();
+    setGovLocation({ lat, lng });
+
+    navigate('/gov-home');
   };
   
   return (
@@ -114,7 +132,7 @@ const ProfileSetup: React.FC = () => {
                 
                 <div>
                   <label htmlFor="govLocation" className="block text-sm font-medium text-gray-700 mb-1">
-                    Location (Latitude, Longitude)
+                    Office Address
                   </label>
                   <input
                     type="text"
@@ -122,12 +140,47 @@ const ProfileSetup: React.FC = () => {
                     value={govLocation}
                     onChange={(e) => setGovLocation(e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="ex: 40.7128, -74.0060"
+                    placeholder="Enter office address"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    This will determine your 5km radius assignment
-                  </p>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="govLatitude" className="block text-sm font-medium text-gray-700 mb-1">
+                      Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      id="govLatitude"
+                      value={govLatitude}
+                      onChange={(e) => setGovLatitude(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="40.7128"
+                      min="-90"
+                      max="90"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="govLongitude" className="block text-sm font-medium text-gray-700 mb-1">
+                      Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      id="govLongitude"
+                      value={govLongitude}
+                      onChange={(e) => setGovLongitude(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="-74.0060"
+                      min="-180"
+                      max="180"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 -mt-2">
+                  These coordinates will determine your 5km radius assignment
+                </p>
                 
                 <div>
                   <label htmlFor="govPhone" className="block text-sm font-medium text-gray-700 mb-1">

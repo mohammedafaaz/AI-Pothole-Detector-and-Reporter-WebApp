@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Check } from 'lucide-react';
+import { Bell, Check, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Link } from 'react-router-dom';
 
@@ -8,12 +8,24 @@ const NotificationBell: React.FC = () => {
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
+    deleteNotification,
     currentUser,
     isGovUser,
     govUser
   } = useAppStore();
   const [open, setOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
+
+  const handleDeleteNotification = (notifId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown from closing
+    setDeletingId(notifId);
+    // Add a small delay for visual feedback
+    setTimeout(() => {
+      deleteNotification(notifId);
+      setDeletingId(null);
+    }, 150);
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -34,11 +46,11 @@ const NotificationBell: React.FC = () => {
   // Filter notifications for current user
   const userNotifications = notifications.filter(n => {
     if (isGovUser && govUser) {
-      // Government users see notifications assigned to them
-      return n.govUserId === govUser.id || n.type === 'compliment';
+      // Government users see notifications assigned to them or compliments sent to them
+      return n.govUserId === govUser.id || (n.type === 'compliment' && n.govUserId === govUser.id);
     } else if (currentUser) {
-      // Regular users see their own notifications
-      return n.userId === currentUser.id || !n.userId; // Include notifications without userId for backward compatibility
+      // Regular users see their own notifications (exclude compliments which are for gov users)
+      return (n.userId === currentUser.id || !n.userId) && n.type !== 'compliment';
     }
     return false;
   });
@@ -83,15 +95,31 @@ const NotificationBell: React.FC = () => {
                     {new Date(n.createdAt).toLocaleString()}
                   </div>
                 </div>
-                {!n.read && (
+                <div className="flex items-center gap-1">
+                  {!n.read && (
+                    <button
+                      className="text-blue-500 hover:text-blue-700"
+                      onClick={() => markNotificationRead(n.id)}
+                      aria-label="Mark as read"
+                    >
+                      <Check size={16} />
+                    </button>
+                  )}
                   <button
-                    className="ml-2 text-blue-500 hover:text-blue-700"
-                    onClick={() => markNotificationRead(n.id)}
-                    aria-label="Mark as read"
+                    className={`text-red-500 hover:text-red-700 transition-all duration-150 ${
+                      deletingId === n.id ? 'opacity-50 scale-90' : 'hover:scale-110'
+                    }`}
+                    onClick={(e) => handleDeleteNotification(n.id, e)}
+                    disabled={deletingId === n.id}
+                    aria-label="Delete notification"
                   >
-                    <Check size={16} />
+                    {deletingId === n.id ? (
+                      <X size={14} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
                   </button>
-                )}
+                </div>
               </li>
             ))}
           </ul>
