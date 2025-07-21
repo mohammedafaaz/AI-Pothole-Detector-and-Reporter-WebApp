@@ -39,7 +39,7 @@ const CitizenHeader: React.FC = () => {
   };
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 md:px-6 md:ml-64">
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 md:px-6 md:ml-64 md:mt-0 mt-0">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         {/* User Info */}
         <div className="flex items-center space-x-3">

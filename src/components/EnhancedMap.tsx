@@ -5,6 +5,7 @@ import { useAppStore } from '../store';
 import { Report } from '../types';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import MapFilterDropdown from './MapFilterDropdown';
 import { MapPin, Eye, ThumbsUp, ThumbsDown } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
@@ -110,62 +111,7 @@ const createCustomIcon = (severity: string, status: string) => {
   });
 };
 
-interface MapControlsProps {
-  onFilterChange: (filters: any) => void;
-  filters: any;
-}
-
-const MapControls: React.FC<MapControlsProps> = ({ onFilterChange, filters }) => {
-  return (
-    <div className="absolute top-4 left-4 z-[1000] space-y-2">
-      {/* Severity Filter */}
-      <div className="bg-white rounded-lg shadow-lg p-3 border border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Severity</h3>
-        <div className="space-y-1">
-          {['high', 'medium', 'low'].map(severity => (
-            <label key={severity} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filters.severity.includes(severity)}
-                onChange={(e) => {
-                  const newSeverity = e.target.checked
-                    ? [...filters.severity, severity]
-                    : filters.severity.filter((s: string) => s !== severity);
-                  onFilterChange({ ...filters, severity: newSeverity });
-                }}
-                className="rounded border-gray-300"
-              />
-              <Badge variant="severity" value={severity} size="sm" showDot />
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Status Filter */}
-      <div className="bg-white rounded-lg shadow-lg p-3 border border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Status</h3>
-        <div className="space-y-1">
-          {['pending', 'in_progress', 'resolved', 'rejected'].map(status => (
-            <label key={status} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={filters.status.includes(status)}
-                onChange={(e) => {
-                  const newStatus = e.target.checked
-                    ? [...filters.status, status]
-                    : filters.status.filter((s: string) => s !== status);
-                  onFilterChange({ ...filters, status: newStatus });
-                }}
-                className="rounded border-gray-300"
-              />
-              <Badge variant="status" value={status} size="sm" showDot />
-            </label>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
+// MapControls component removed - replaced with MapFilterDropdown
 
 interface ReportPopupProps {
   report: Report;
@@ -365,10 +311,16 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
         ))}
       </MapContainer>
 
-      <MapControls filters={filters} onFilterChange={setFilters} />
-      
+      {/* Filter Dropdown */}
+      <div className="absolute top-4 left-4 z-[10000]">
+        <MapFilterDropdown
+          filters={filters}
+          onFilterChange={setFilters}
+        />
+      </div>
+
       {/* Report count */}
-      <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg px-3 py-2 border border-gray-200">
+      <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 border border-gray-200">
         <p className="text-sm text-gray-600">
           <span className="font-medium text-gray-900">{filteredReports.length}</span> reports shown
         </p>

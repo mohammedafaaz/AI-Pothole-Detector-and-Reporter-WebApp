@@ -27,30 +27,51 @@ const MobileNavigation: React.FC = () => {
 
   const unreadCount = userNotifications.filter(n => !n.read).length;
 
-  // Auto-hide navigation on scroll
+  // Enhanced auto-hide navigation on scroll
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | 'idle'>('idle');
 
   useEffect(() => {
+    let ticking = false;
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          const scrollDifference = Math.abs(currentScrollY - lastScrollY);
 
-      if (currentScrollY < 10) {
-        // Always show at top
-        setIsVisible(true);
-      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
-        // Scrolling down - hide
-        setIsVisible(false);
-      } else if (currentScrollY < lastScrollY) {
-        // Scrolling up - show
-        setIsVisible(true);
+          // Only react to significant scroll movements (reduces jitter)
+          if (scrollDifference > 5) {
+            if (currentScrollY < 20) {
+              // Always show at top of page
+              setIsVisible(true);
+              setScrollDirection('idle');
+            } else if (currentScrollY > lastScrollY && currentScrollY > 80) {
+              // Scrolling down - hide after 80px
+              setIsVisible(false);
+              setScrollDirection('down');
+            } else if (currentScrollY < lastScrollY) {
+              // Scrolling up - show immediately
+              setIsVisible(true);
+              setScrollDirection('up');
+            }
+
+            setLastScrollY(currentScrollY);
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
-
-      setLastScrollY(currentScrollY);
     };
 
+    // Add scroll listener with passive option for better performance
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, [lastScrollY]);
 
   const citizenNavItems = [
@@ -153,8 +174,8 @@ const MobileNavigation: React.FC = () => {
       {/* Mobile Bottom Navigation */}
       <div className={`
         fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-[9999] md:hidden
-        transition-transform duration-300 ease-in-out shadow-lg
-        ${isVisible ? 'translate-y-0' : 'translate-y-full'}
+        transition-all duration-300 ease-in-out shadow-lg backdrop-blur-sm bg-white/95
+        ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}
       `}>
         <div className="flex items-center justify-around py-2">
           {navItems.map((item) => {
@@ -286,7 +307,7 @@ const MobileNavigation: React.FC = () => {
       </div>
 
       {/* Mobile padding to prevent content from being hidden behind nav */}
-      <div className="h-16 md:hidden" />
+      <div className="h-20 md:hidden" />
     </>
   );
 };

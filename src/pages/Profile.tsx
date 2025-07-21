@@ -158,6 +158,21 @@ const Profile: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       <MobileNavigation />
 
+      {/* Centered Logo Header - Flush with top */}
+      <div className="bg-white border-b border-gray-200 md:pl-64 pt-0 md:pt-0">
+        <div className="flex items-center justify-center py-2 md:py-3">
+          <div className="flex items-center">
+            <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center">
+              <img
+                src="/logo2.jpg"
+                alt="FixMyPothole.AI Logo"
+                className="w-12 h-12 md:w-16 md:h-16 object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Desktop sidebar spacing */}
       <div className="md:pl-64">
         <div className="max-w-lg mx-auto p-6 animate-fade-in">

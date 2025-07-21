@@ -1,4 +1,4 @@
-#🚧 Pothole Reporter and Detector
+#🚧 MyPotholeFix.AI
 
 AI-powered pothole reporting system that enables citizens to report road issues and allows government officials to manage and resolve them efficiently.
 
@@ -15,6 +15,12 @@ AI-powered pothole reporting system that enables citizens to report road issues 
 
 ### Frontend
 ```bash
-cd project
 npm install
 npm run dev
+
+### Backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd api
+python app.py

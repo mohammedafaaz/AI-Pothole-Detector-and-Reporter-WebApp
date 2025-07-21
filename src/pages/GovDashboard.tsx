@@ -101,15 +101,15 @@ const GovDashboard: React.FC = () => {
     <div className="min-h-screen bg-red-50">
       <MobileNavigation />
 
-      {/* Centered Logo Header */}
-      <div className="bg-white border-b border-gray-200 md:pl-64">
-        <div className="flex items-center justify-center py-1">
+      {/* Centered Logo Header - Flush with top */}
+      <div className="bg-white border-b border-gray-200 md:pl-64 pt-0 md:pt-0">
+        <div className="flex items-center justify-center py-2 md:py-3">
           <div className="flex items-center">
-            <div className="w-16 h-16 flex items-center justify-center">
+            <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center">
               <img
                 src="/logo2.jpg"
                 alt="FixMyPothole.AI Logo"
-                className="w-16 h-16 object-contain"
+                className="w-12 h-12 md:w-16 md:h-16 object-contain"
               />
             </div>
           </div>
@@ -145,11 +145,11 @@ const GovDashboard: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="p-4 md:p-6">
+        <div className="px-4 md:px-6 pt-4 md:pt-4">
           <ReportFilters
             filters={filters}
             onFiltersChange={setFilters}
-            className="mb-6"
+            className="mb-4"
           />
 
           {/* Stats Overview */}
