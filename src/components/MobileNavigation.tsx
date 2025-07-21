@@ -30,7 +30,6 @@ const MobileNavigation: React.FC = () => {
   // Enhanced auto-hide navigation on scroll
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
-  const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | 'idle'>('idle');
 
   useEffect(() => {
     let ticking = false;
@@ -46,15 +45,12 @@ const MobileNavigation: React.FC = () => {
             if (currentScrollY < 20) {
               // Always show at top of page
               setIsVisible(true);
-              setScrollDirection('idle');
             } else if (currentScrollY > lastScrollY && currentScrollY > 80) {
               // Scrolling down - hide after 80px
               setIsVisible(false);
-              setScrollDirection('down');
             } else if (currentScrollY < lastScrollY) {
               // Scrolling up - show immediately
               setIsVisible(true);
-              setScrollDirection('up');
             }
 
             setLastScrollY(currentScrollY);

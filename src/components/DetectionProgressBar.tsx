@@ -38,9 +38,9 @@ const DetectionProgressBar: React.FC<DetectionProgressBarProps> = ({
   if (!isActive) return null;
 
   const steps = [
-    { key: 'capturing', label: 'Capturing Image' },
-    { key: 'uploading', label: 'Uploading' },
-    { key: 'processing', label: 'Processing' },
+    { key: 'capturing', label: 'Image Captured' },
+    { key: 'uploading', label: 'Uploaded' },
+    { key: 'processing', label: 'Processed' },
     { key: 'analyzing', label: 'AI Analysis' },
     { key: 'complete', label: 'Complete' }
   ];
@@ -73,7 +73,7 @@ const DetectionProgressBar: React.FC<DetectionProgressBarProps> = ({
             {currentStep === 'error' ? 'Detection Error' : 'AI Pothole Detection'}
           </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {message || 'Processing your image with our ML model...'}
+            {message || 'Processing your images with our ML model...'}
           </p>
         </div>
 

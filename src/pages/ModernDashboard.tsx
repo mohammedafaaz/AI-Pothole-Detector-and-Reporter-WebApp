@@ -130,15 +130,15 @@ const ModernDashboard: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       <MobileNavigation />
 
-      {/* Centered Logo Header - Flush with top */}
-      <div className="bg-white border-b border-gray-200 md:pl-64 pt-0 md:pt-0">
-        <div className="flex items-center justify-center py-2 md:py-3">
+      {/* Centered Logo Header - Flush with top, no extra spacing on mobile */}
+      <div className="bg-white border-b border-gray-200 md:pl-64 pt-0 md:pt-0 mt-0">
+        <div className="flex items-center justify-center py-1 md:py-3">
           <div className="flex items-center">
-            <div className="w-12 h-12 md:w-16 md:h-16 flex items-center justify-center">
+            <div className="w-10 h-10 md:w-16 md:h-16 flex items-center justify-center">
               <img
                 src="/logo2.jpg"
                 alt="FixMyPothole.AI Logo"
-                className="w-12 h-12 md:w-16 md:h-16 object-contain"
+                className="w-10 h-10 md:w-16 md:h-16 object-contain"
               />
             </div>
           </div>
@@ -234,6 +234,7 @@ const ModernDashboard: React.FC = () => {
                     key={report.id}
                     report={report}
                     isGovView={isGovUser}
+                    showAnnotatedImages={isGovUser}
                   />
                 ))}
               </div>

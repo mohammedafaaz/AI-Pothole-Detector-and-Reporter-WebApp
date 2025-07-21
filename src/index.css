@@ -3,6 +3,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
 /* Global mobile layout fixes */
 @layer base {
   html, body {
@@ -22,6 +38,25 @@
     .min-h-screen {
       min-height: 100vh;
       min-height: 100dvh; /* Dynamic viewport height for mobile */
+    }
+
+    /* Remove any default browser spacing */
+    #root {
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Ensure headers are flush with top */
+    .bg-white:first-child {
+      margin-top: 0;
+      padding-top: 0;
+    }
+  }
+
+  /* Fix mobile viewport issues */
+  @supports (-webkit-touch-callout: none) {
+    .min-h-screen {
+      min-height: -webkit-fill-available;
     }
   }
 }

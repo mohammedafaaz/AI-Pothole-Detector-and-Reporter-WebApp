@@ -840,10 +840,20 @@ export const useAppStore = create(
           ...defaultAuthenticatedUsers,
           ...persistedState?.authenticatedUsers,
         },
-        // Filter out anonymous reports from persisted data
-        reports: (persistedState?.reports || []).filter((report: any) =>
-          report.userName !== 'Anonymous' && report.userId !== 'anonymous'
-        ),
+        // Filter out anonymous reports from persisted data and ensure dates are properly restored
+        reports: (persistedState?.reports || [])
+          .filter((report: any) =>
+            report.userName !== 'Anonymous' && report.userId !== 'anonymous'
+          )
+          .map((report: any) => ({
+            ...report,
+            createdAt: new Date(report.createdAt), // Ensure createdAt is a Date object
+          })),
+        // Ensure notifications have proper Date objects too
+        notifications: (persistedState?.notifications || []).map((notif: any) => ({
+          ...notif,
+          createdAt: new Date(notif.createdAt),
+        })),
       }),
     }
   )

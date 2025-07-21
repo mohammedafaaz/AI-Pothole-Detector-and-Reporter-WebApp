@@ -44,8 +44,11 @@ export const determineSeverity = (detections: Detection[]): 'high' | 'medium' | 
   // Calculate average confidence
   const avgConfidence = detections.reduce((sum, det) => sum + det.confidence, 0) / detections.length;
   
-  // Calculate average size (area)
-  const avgSize = detections.reduce((sum, det) => sum + (det.box.width * det.box.height), 0) / detections.length;
+  // Calculate average size (area) - only for detections with box property
+  const detectionsWithBox = detections.filter(det => det.box);
+  const avgSize = detectionsWithBox.length > 0
+    ? detectionsWithBox.reduce((sum, det) => sum + (det.box!.width * det.box!.height), 0) / detectionsWithBox.length
+    : 0;
   
   // Combine factors to determine severity
   const severityScore = avgConfidence * 0.6 + avgSize * 0.4;
@@ -70,6 +73,9 @@ export const drawDetections = (
   
   // Draw each detection
   detections.forEach(detection => {
+    // Skip detections without box property
+    if (!detection.box) return;
+
     // Convert normalized coordinates to pixel coordinates
     const x = detection.box.x * videoWidth;
     const y = detection.box.y * videoHeight;

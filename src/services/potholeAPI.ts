@@ -52,6 +52,8 @@ export interface DetectionOptions {
     name: string;
     email: string;
   };
+  allImages?: string[];
+  allDetections?: any[][];
 }
 
 class PotholeDetectionAPI {
@@ -101,6 +103,12 @@ class PotholeDetectionAPI {
       if (options.userInfo) {
         formData.append('user_name', options.userInfo.name);
         formData.append('user_email', options.userInfo.email);
+      }
+      if (options.allImages) {
+        formData.append('all_images', JSON.stringify(options.allImages));
+      }
+      if (options.allDetections) {
+        formData.append('all_detections', JSON.stringify(options.allDetections));
       }
 
       const response = await fetch(`${this.baseURL}/detect`, {

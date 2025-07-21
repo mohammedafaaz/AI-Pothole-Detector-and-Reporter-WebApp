@@ -12,12 +12,14 @@ interface ReportCardProps {
   report: Report;
   isGovView?: boolean;
   onViewDetails?: (report: Report) => void;
+  showAnnotatedImages?: boolean; // New prop to control annotated image display
 }
 
-const ModernReportCard: React.FC<ReportCardProps> = ({ 
-  report, 
+const ModernReportCard: React.FC<ReportCardProps> = ({
+  report,
   isGovView = false,
-  onViewDetails 
+  onViewDetails,
+  showAnnotatedImages = false
 }) => {
   const {
     currentUser,
@@ -29,6 +31,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   const hasUpvoted = currentUser ? report.upvotedBy?.includes(currentUser.id) || false : false;
   const hasDownvoted = currentUser ? report.downvotedBy?.includes(currentUser.id) || false : false;
@@ -53,15 +56,39 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
     updateReport(report.id, { fixingStatus: e.target.value as 'pending' | 'in_progress' | 'resolved' | 'rejected' });
   };
 
-  const formatTimeAgo = (date: Date) => {
+  const formatDateTime = (date: Date) => {
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return 'Just now';
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-    return date.toLocaleDateString();
+
+    // For very recent reports (less than 1 hour), show relative time
+    if (diffInHours < 1) {
+      const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+      if (diffInMinutes < 1) return 'Just now';
+      return `${diffInMinutes}m ago`;
+    }
+
+    // For reports within the same day, show time
+    if (diffInHours < 24 && date.toDateString() === now.toDateString()) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // For reports within the last 7 days, show day and time
+    if (diffInHours < 24 * 7) {
+      return date.toLocaleDateString([], {
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // For older reports, show full date and time
+    return date.toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const canDelete = currentUser && (
@@ -85,29 +112,91 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
       {/* Image Section */}
       <div className="relative">
         <div className="aspect-video bg-gray-100 overflow-hidden">
-          {(report.annotatedImageUrl || report.photo) ? (
-            <img
-              src={report.annotatedImageUrl || report.photo}
-              alt="Pothole"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-100">
-              <AlertTriangle className="w-12 h-12 text-gray-400" />
-            </div>
-          )}
+          {(() => {
+            // Handle multiple photos or single photo
+            const photos = report.photos || [];
+            const hasPhotos = photos.length > 0;
+            const fallbackPhoto = report.annotatedImageUrl || report.photo;
+
+            if (hasPhotos) {
+              const currentPhoto = photos[currentImageIndex];
+              let photoSrc = typeof currentPhoto === 'string' ? currentPhoto : currentPhoto?.image;
+
+              // For government view, show annotated images if available
+              if (showAnnotatedImages) {
+                // Check if current photo has its own annotated image
+                if (typeof currentPhoto === 'object' && currentPhoto?.image) {
+                  // Use the annotated image from the photo object if available
+                  photoSrc = currentPhoto.image;
+                } else if (report.annotatedImageUrl && currentImageIndex === 0) {
+                  // Fallback to main report annotated image for first photo
+                  photoSrc = report.annotatedImageUrl;
+                }
+              }
+
+              return (
+                <div className="relative w-full h-full">
+                  <img
+                    src={photoSrc}
+                    alt={`Pothole ${currentImageIndex + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+
+                  {/* Photo counter */}
+                  {photos.length > 1 && (
+                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
+                      {currentImageIndex + 1}/{photos.length}
+                    </div>
+                  )}
+
+                  {/* Navigation arrows */}
+                  {photos.length > 1 && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex(Math.max(0, currentImageIndex - 1));
+                        }}
+                        disabled={currentImageIndex === 0}
+                        className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-black/70 disabled:opacity-30 text-sm"
+                      >
+                        ←
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex(Math.min(photos.length - 1, currentImageIndex + 1));
+                        }}
+                        disabled={currentImageIndex === photos.length - 1}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-black/70 disabled:opacity-30 text-sm"
+                      >
+                        →
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            } else if (fallbackPhoto) {
+              return (
+                <img
+                  src={fallbackPhoto}
+                  alt="Pothole"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              );
+            } else {
+              return (
+                <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                  <AlertTriangle className="w-12 h-12 text-gray-400" />
+                </div>
+              );
+            }
+          })()}
         </div>
 
-        {/* Overlay badges */}
-        <div className="absolute top-3 right-3 flex gap-2">
-          <Badge variant="severity" value={report.severity} showDot />
-        </div>
-        
-        <div className="absolute bottom-3 left-3">
-          <Badge variant="status" value={report.fixingStatus} showDot />
-        </div>
 
-        {report.annotatedImageUrl && (
+
+        {(report.annotatedImageUrl || (report.photos && report.photos.length > 0)) && (
           <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
             AI Detected
           </div>
@@ -168,7 +257,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
               <Calendar className="w-3 h-3" />
-              {formatTimeAgo(new Date(report.createdAt))}
+              {formatDateTime(new Date(report.createdAt))}
             </div>
           </div>
         </div>
@@ -184,6 +273,13 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
               {report.location.lat.toFixed(4)}, {report.location.lng.toFixed(4)}
             </p>
           </div>
+        </div>
+
+        {/* Status Badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="severity" value={report.severity} showDot size="sm" />
+          <Badge variant="verification" value={report.verified} showDot size="sm" />
+          <Badge variant="status" value={report.fixingStatus} showDot size="sm" />
         </div>
 
         {/* Description */}

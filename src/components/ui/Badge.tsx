@@ -1,8 +1,8 @@
 import React from 'react';
-import { getSeverityColor, getStatusColor } from '../../styles/design-system';
+import { getSeverityColor, getStatusColor, getVerificationColor } from '../../styles/design-system';
 
 interface BadgeProps {
-  variant?: 'status' | 'severity' | 'default';
+  variant?: 'status' | 'severity' | 'verification' | 'default';
   value: string;
   size?: 'sm' | 'md' | 'lg';
   showDot?: boolean;
@@ -22,10 +22,12 @@ const Badge: React.FC<BadgeProps> = ({
         return getStatusColor(value);
       case 'severity':
         return getSeverityColor(value);
+      case 'verification':
+        return getVerificationColor(value);
       default:
         return {
           bg: '#f3f4f6',
-          border: '#d1d5db', 
+          border: '#d1d5db',
           text: '#374151',
           accent: '#6b7280'
         };

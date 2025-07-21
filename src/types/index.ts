@@ -32,6 +32,10 @@ export interface Report {
     address?: string;
   };
   photo: string;
+  photos?: Array<{
+    image: string;
+    detections: Detection[];
+  }>; // Multiple photos with their detections
   description?: string;
   severity: 'high' | 'medium' | 'low';
   confidence: number;
@@ -46,9 +50,17 @@ export interface Report {
 }
 
 export interface Detection {
-  box: {
+  box?: {
     x: number;
     y: number;
+    width: number;
+    height: number;
+  };
+  bbox?: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
     width: number;
     height: number;
   };

@@ -19,14 +19,46 @@ import traceback
 import sys
 import json
 from functools import wraps
+import google.generativeai as genai
+import base64
+import io
+import time
+from collections import defaultdict
+import logging
 
 # Note: Database imports removed - using localStorage only
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('api.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Simple rate limiting
+request_counts = defaultdict(list)
+RATE_LIMIT_REQUESTS = 100  # requests per window
+RATE_LIMIT_WINDOW = 3600  # 1 hour in seconds
 
 # Initialize Flask app
 app = Flask(__name__, static_url_path='/static')
 
 # Enable CORS for React frontend
 CORS(app, origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://localhost:5173'])
+
+# Add security headers
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
 
 # API Configuration
 API_VERSION = "v1"
@@ -45,23 +77,76 @@ config = {
     'CONFIDENCE_THRESHOLD': float(os.getenv('CONFIDENCE_THRESHOLD', 0.25)),
     'IMAGE_SIZE': int(os.getenv('IMAGE_SIZE', 640)),
     'MAPBOX_ACCESS_TOKEN': os.getenv('MAPBOX_ACCESS_TOKEN', ''),
-    'API_KEY': os.getenv('API_KEY', None)  # Optional API key for authentication
+    'API_KEY': os.getenv('API_KEY', None),  # Optional API key for authentication
+    'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY', '')  # Gemini API key
 }
+
+# Initialize Gemini AI
+gemini_enabled = False
+gemini_model = None
+gemini_fallback_model = None
+
+if config['GEMINI_API_KEY']:
+    try:
+        genai.configure(api_key=config['GEMINI_API_KEY'])
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        # Initialize fallback model
+        try:
+            gemini_fallback_model = genai.GenerativeModel('gemini-1.0-pro-vision-latest')
+            print("✅ Gemini AI initialized with fallback model")
+        except Exception as e:
+            print(f"⚠️ Fallback model not available: {e}")
+
+        gemini_enabled = True
+        print("✅ Gemini AI initialized successfully")
+    except Exception as e:
+        print(f"❌ Gemini AI initialization failed: {e}")
+        gemini_enabled = False
+else:
+    print("⚠️ Gemini API key not provided - AI descriptions disabled")
 
 # Print configuration for debugging
 print("\nConfiguration values:")
 for key, value in config.items():
-    if key in ['EMAIL_PASSWORD', 'MAPBOX_ACCESS_TOKEN'] and value:
+    if key in ['EMAIL_PASSWORD', 'MAPBOX_ACCESS_TOKEN', 'GEMINI_API_KEY'] and value:
         print(f"{key}: {'*' * len(value)}")
     else:
         print(f"{key}: {value}")
+print(f"Gemini AI enabled: {gemini_enabled}")
 
-# Check for required values (only MODEL_PATH is required)
-missing_config = [key for key in ['MODEL_PATH'] if not config[key]]
-if missing_config:
-    print(f"\nERROR: Missing required configuration: {', '.join(missing_config)}")
-    print("Please set these values in your .env file")
-    sys.exit(1)
+# Validate configuration
+def validate_config():
+    """Validate required configuration values"""
+    errors = []
+
+    # Check required values
+    if not config['MODEL_PATH']:
+        errors.append("MODEL_PATH is required")
+    elif not os.path.exists(config['MODEL_PATH']):
+        errors.append(f"Model file not found: {config['MODEL_PATH']}")
+
+    # Validate numeric values
+    try:
+        if config['CONFIDENCE_THRESHOLD'] < 0 or config['CONFIDENCE_THRESHOLD'] > 1:
+            errors.append("CONFIDENCE_THRESHOLD must be between 0 and 1")
+    except (ValueError, TypeError):
+        errors.append("CONFIDENCE_THRESHOLD must be a valid number")
+
+    try:
+        if config['IMAGE_SIZE'] <= 0:
+            errors.append("IMAGE_SIZE must be a positive integer")
+    except (ValueError, TypeError):
+        errors.append("IMAGE_SIZE must be a valid integer")
+
+    if errors:
+        logger.error(f"Configuration validation failed:")
+        for error in errors:
+            logger.error(f"  - {error}")
+        sys.exit(1)
+
+    logger.info("Configuration validation passed")
+
+validate_config()
 
 # Check for email configuration
 email_enabled = bool(config['EMAIL_USER'] and config['EMAIL_PASSWORD'])
@@ -96,10 +181,38 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
+# Rate limiting function
+def check_rate_limit(client_ip):
+    """Check if client has exceeded rate limit"""
+    current_time = time.time()
+
+    # Clean old requests outside the window
+    request_counts[client_ip] = [
+        req_time for req_time in request_counts[client_ip]
+        if current_time - req_time < RATE_LIMIT_WINDOW
+    ]
+
+    # Check if limit exceeded
+    if len(request_counts[client_ip]) >= RATE_LIMIT_REQUESTS:
+        return False
+
+    # Add current request
+    request_counts[client_ip].append(current_time)
+    return True
+
 # API Authentication decorator
 def require_api_key(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check rate limit
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', 'unknown'))
+        if not check_rate_limit(client_ip):
+            return jsonify({
+                'success': False,
+                'error': 'Rate limit exceeded. Please try again later.',
+                'code': 'RATE_LIMIT_EXCEEDED'
+            }), 429
+
         if config['API_KEY']:
             api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
             if not api_key or api_key != config['API_KEY']:
@@ -252,9 +365,10 @@ def get_address_from_coordinates(latitude, longitude):
         print(f"Error getting address: {str(e)}")
         return None
 
-def send_email_with_results(email, detections, image_path, location, user_info=None):
-    """Send detection results via email with static map"""
-    print(f"send_email_with_results called - email: {email}, detections: {len(detections)}, email_enabled: {email_enabled}")
+def send_detailed_pothole_report(email, detections, image_path, location, user_info=None, all_detections=None, all_images=None):
+    """Send comprehensive pothole detection report via email with multiple images and detailed analysis"""
+    print(f"send_detailed_pothole_report called - email: {email}, detections: {len(detections) if detections else 0}, email_enabled: {email_enabled}")
+    print(f"Email config - EMAIL_USER: {EMAIL_USER}, EMAIL_PASSWORD: {'*' * len(EMAIL_PASSWORD) if EMAIL_PASSWORD else None}")
 
     if not email_enabled:
         print("Email not enabled - returning False")
@@ -266,19 +380,42 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
 
         # Create message container
         msg = MIMEMultipart()
-        msg['Subject'] = '🚧 Pothole Detection Alert'
+        msg['Subject'] = 'Pothole Detection Report - Detailed Analysis'
         msg['From'] = EMAIL_USER
         msg['To'] = email
 
         # Current date and time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Get highest severity for map marker
-        severity = 'Medium'
-        if detections:
-            severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
-            highest_severity = max(detections, key=lambda x: severity_levels[x['severity']])
-            severity = highest_severity['severity']
+        # Calculate detection statistics
+        total_detections = 0
+        highest_severity = 'Low'
+        max_confidence = 0.0
+
+        if all_detections:
+            # Count all detections across all images
+            for img_detections in all_detections:
+                total_detections += len(img_detections)
+                for detection in img_detections:
+                    if detection.get('confidence', 0) > max_confidence:
+                        max_confidence = detection['confidence']
+
+                    # Determine highest severity
+                    severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
+                    current_severity = detection.get('severity', 'Low')
+                    if severity_levels.get(current_severity, 1) > severity_levels.get(highest_severity, 1):
+                        highest_severity = current_severity
+        elif detections:
+            # Fallback to single detection list
+            total_detections = len(detections)
+            for detection in detections:
+                if detection.get('confidence', 0) > max_confidence:
+                    max_confidence = detection['confidence']
+
+                severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
+                current_severity = detection.get('severity', 'Low')
+                if severity_levels.get(current_severity, 1) > severity_levels.get(highest_severity, 1):
+                    highest_severity = current_severity
 
         # Generate map and get address if location exists
         map_path = None
@@ -290,7 +427,7 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
             lat, lng = location['latitude'], location['longitude']
             print(f"🗺️ Generating map for coordinates: {lat}, {lng}")
 
-            map_path = generate_static_map(lat, lng, severity)
+            map_path = generate_static_map(lat, lng, highest_severity)
             print(f"🗺️ Map generation result: {map_path}")
 
             # Get detailed address
@@ -306,117 +443,179 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
 
         # Get user info for detailed report
         user_name = user_info.get('name', 'Unknown User') if user_info else 'Unknown User'
-        user_email = user_info.get('email', 'N/A') if user_info else 'N/A'
+        user_email_raw = user_info.get('email', 'N/A') if user_info else 'N/A'
 
-        # Create detailed email body
+        # Clean user data - remove any pipe-separated metadata
+        if '|' in user_name:
+            user_name = user_name.split('|')[0].strip()
+        if '|' in user_email_raw:
+            user_email_raw = user_email_raw.split('|')[0].strip()
+
+        user_email = user_email_raw
+
+        # Create detailed email body without emojis
         body = f"""
         <html>
         <head>
             <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }}
-                .header {{ padding: 30px; text-align: center; color: white; }}
-                .content {{ padding: 30px; background: #f8f9fa; }}
-                .info-card {{ background: white; padding: 20px; margin: 15px 0; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                h1 {{ margin: 0; font-size: 28px; }}
-                h2 {{ color: #dc3545; margin-top: 0; }}
-                h3 {{ color: #495057; border-bottom: 2px solid #dee2e6; padding-bottom: 10px; }}
-                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #f8f9fa; }}
+                .container {{ max-width: 800px; margin: 0 auto; background: white; }}
+                .header {{ background: linear-gradient(135deg, #2c3e50, #3498db); padding: 30px; text-align: center; color: white; }}
+                .content {{ padding: 30px; }}
+                .info-card {{ background: #f8f9fa; padding: 20px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #3498db; }}
+                .summary-card {{ background: #e8f4fd; padding: 20px; margin: 15px 0; border-radius: 8px; border: 1px solid #bee5eb; }}
+                h1 {{ margin: 0; font-size: 28px; font-weight: 300; }}
+                h2 {{ color: #2c3e50; margin-top: 0; font-size: 22px; }}
+                h3 {{ color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-bottom: 15px; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 15px 0; background: white; }}
                 th, td {{ border: 1px solid #dee2e6; padding: 12px; text-align: left; }}
-                th {{ background-color: #e9ecef; font-weight: bold; }}
-                .high {{ color: #dc3545; font-weight: bold; }}
-                .medium {{ color: #fd7e14; font-weight: bold; }}
-                .low {{ color: #28a745; font-weight: bold; }}
-                .map-container {{ margin: 20px 0; text-align: center; }}
-                img {{ max-width: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }}
-                .footer {{ margin-top: 30px; text-align: center; color: #6c757d; font-size: 0.9em; padding: 20px; background: #e9ecef; }}
-                .stats {{ display: flex; justify-content: space-around; text-align: center; }}
-                .stat {{ background: white; padding: 15px; border-radius: 8px; }}
-                .badge {{ display: inline-block; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; }}
-                .badge-high {{ background: #dc3545; color: white; }}
-                .badge-medium {{ background: #fd7e14; color: white; }}
-                .badge-low {{ background: #28a745; color: white; }}
+                th {{ background-color: #f8f9fa; font-weight: 600; color: #495057; }}
+                .severity-high {{ color: #dc3545; font-weight: bold; }}
+                .severity-medium {{ color: #fd7e14; font-weight: bold; }}
+                .severity-low {{ color: #28a745; font-weight: bold; }}
+                .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }}
+                .stat-item {{ background: white; padding: 20px; text-align: center; border-radius: 8px; border: 1px solid #dee2e6; }}
+                .stat-number {{ font-size: 24px; font-weight: bold; color: #2c3e50; display: block; }}
+                .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
+                .image-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }}
+                .image-item {{ text-align: center; }}
+                .image-item img {{ max-width: 100%; border-radius: 8px; border: 2px solid #dee2e6; }}
+                .image-title {{ font-weight: bold; margin: 10px 0 5px 0; color: #495057; }}
+                .location-link {{ color: #3498db; text-decoration: none; font-weight: 500; }}
+                .location-link:hover {{ text-decoration: underline; }}
+                .footer {{ background: #ecf0f1; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }}
             </style>
         </head>
         <body>
-            <div class="header">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="cid:logo_image" alt="FixMyPothole.AI Logo" style="width: 80px; height: 80px; object-fit: contain; border-radius: 10px;">
+            <div class="container">
+                <div class="header">
+                    <img src="cid:logo_image" alt="FixMyPothole.AI Logo" style="width: 60px; height: 60px; margin-bottom: 15px; border-radius: 8px;">
+                    <h1>Pothole Detection Report</h1>
+                    <p style="margin: 10px 0 0 0; opacity: 0.9;">Professional AI-Powered Road Analysis</p>
+                    <p style="margin: 5px 0 0 0; font-size: 14px; opacity: 0.8;">Report Generated: {current_time}</p>
                 </div>
-                <h1>FixMyPothole.AI Detection Report</h1>
-                <p>AI-Powered Pothole Detection & Analysis</p>
-                <p style="font-size: 14px; opacity: 0.9;">Generated on {current_time}</p>
-            </div>
 
-            <div class="content">
-                <div class="info-card">
-                    <h2>Detection Summary</h2>
-                    <div class="stats">
-                        <div class="stat">
-                            <strong>{len(detections)}</strong><br>
-                            <small>Potholes Found</small>
+                <div class="content">
+                    <div class="summary-card">
+                        <h2>Detection Summary</h2>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-number">{total_detections}</span>
+                                <div class="stat-label">Total Detections</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number severity-{highest_severity.lower()}">{highest_severity}</span>
+                                <div class="stat-label">Highest Severity</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{max_confidence*100:.1f}%</span>
+                                <div class="stat-label">Max Confidence</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{len(all_images) if all_images else 1}</span>
+                                <div class="stat-label">Images Analyzed</div>
+                            </div>
                         </div>
-                        <div class="stat">
-                            <strong>{severity}</strong><br>
-                            <small>Highest Severity</small>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Reporter Information</h3>
+                        <table>
+                            <tr><td><strong>Name</strong></td><td>{user_name}</td></tr>
+                            <tr><td><strong>Email</strong></td><td>{user_email}</td></tr>
+                            <tr><td><strong>Report Time</strong></td><td>{current_time}</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Location Information</h3>
+                        <table>
+                            <tr><td><strong>Address</strong></td><td>{detailed_address if detailed_address else 'Address lookup not available'}</td></tr>
+                            <tr><td><strong>GPS Coordinates</strong></td><td>{f"{location['latitude']:.6f}, {location['longitude']:.6f}" if location and location.get('latitude') and location.get('longitude') else 'Location data not available'}</td></tr>
+                            <tr><td><strong>Accuracy</strong></td><td>{f"±{location.get('accuracy', 'Unknown')}m" if location and location.get('accuracy') else 'High precision GPS' if location else 'Unknown'}</td></tr>
+                            <tr><td><strong>Map Link</strong></td><td>{f'<a href="https://www.google.com/maps?q={location["latitude"]},{location["longitude"]}" target="_blank" class="location-link">View on Google Maps</a>' if location and location.get('latitude') and location.get('longitude') else 'Not available'}</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="info-card">
+                        <h3>Detection Results</h3>
+                        {f"""
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Image</th>
+                                    <th>Detection</th>
+                                    <th>Type</th>
+                                    <th>Severity</th>
+                                    <th>Confidence</th>
+                                    <th>Relative Size</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {chr(10).join([
+                                    f'''<tr>
+                                        <td>#{img_idx + 1}</td>
+                                        <td>#{det_idx + 1}</td>
+                                        <td>{d.get('class', 'Pothole').title()}</td>
+                                        <td><span class="severity-{d.get('severity', 'medium').lower()}">{d.get('severity', 'Medium')}</span></td>
+                                        <td>{d.get('confidence', 0)*100:.1f}%</td>
+                                        <td>{d.get('relative_size', 0)*100:.1f}%</td>
+                                    </tr>'''
+                                    for img_idx, img_detections in enumerate(all_detections or [detections] if detections else [])
+                                    for det_idx, d in enumerate(img_detections)
+                                ]) if (all_detections and any(len(img_dets) > 0 for img_dets in all_detections)) or detections else '<tr><td colspan="6" style="text-align: center; color: #28a745;">No potholes detected in the analyzed images</td></tr>'}
+                            </tbody>
+                        </table>
+                        """ if (all_detections and any(len(img_dets) > 0 for img_dets in all_detections)) or detections else '<p style="text-align: center; color: #28a745; font-size: 16px; padding: 20px;">No potholes detected in the analyzed images</p>'}
+                    </div>
+
+                    {f'''
+                    <div class="info-card">
+                        <h3>Location Map</h3>
+                        <div style="text-align: center; padding: 20px;">
+                            <img src="cid:map_image" alt="Pothole location map" style="max-width: 100%; border-radius: 8px; border: 2px solid #dee2e6;">
+                            <p style="margin-top: 15px; color: #6c757d; font-size: 14px;">
+                                Precise Location: {location["latitude"]:.6f}, {location["longitude"]:.6f}
+                            </p>
                         </div>
-                        <div class="stat">
-                            <strong>{max([d['confidence'] for d in detections], default=0)*100:.1f}%</strong><br>
-                            <small>Max Confidence</small>
+                    </div>
+                    ''' if map_path else '''
+                    <div class="info-card">
+                        <h3>Location Map</h3>
+                        <p style="text-align: center; color: #6c757d; padding: 20px;">
+                            Location map not available - GPS coordinates may be missing or Mapbox service unavailable
+                        </p>
+                    </div>
+                    '''}
+
+                    <div class="info-card">
+                        <h3>Analyzed Images</h3>
+                        <div class="image-grid">
+                            {chr(10).join([
+                                f'''<div class="image-item">
+                                    <div class="image-title">Image {i+1}</div>
+                                    <img src="cid:detection_image_{i}" alt="Pothole analysis image {i+1}">
+                                    <p style="color: #6c757d; font-size: 12px; margin-top: 8px;">AI-processed with detection overlay</p>
+                                </div>'''
+                                for i in range(len(all_images) if all_images else 1)
+                            ]) if all_images and len(all_images) > 1 else '''
+                            <div class="image-item">
+                                <div class="image-title">Analysis Result</div>
+                                <img src="cid:detection_image" alt="Pothole analysis result">
+                                <p style="color: #6c757d; font-size: 12px; margin-top: 8px;">AI-processed with detection overlay</p>
+                            </div>
+                            '''}
                         </div>
+                        <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
+                            Images analyzed using YOLOv8 machine learning model for pothole detection
+                        </p>
                     </div>
                 </div>
 
-                <div class="info-card">
-                    <h3>Reporter Information</h3>
-                    <p><strong>Name:</strong> {user_name}</p>
-                    <p><strong>Email:</strong> {user_email}</p>
-                    <p><strong>Report Time:</strong> {current_time}</p>
-                </div>
-
-                <div class="info-card">
-                    <h3>📍 Location Details</h3>
-                    {f"<p><strong>📍 Address:</strong> {detailed_address}</p>" if detailed_address else "<p><strong>📍 Address:</strong> <em>Address lookup not available</em></p>"}
-                    <p><strong>🌐 GPS Coordinates:</strong> {f"{location['latitude']:.6f}, {location['longitude']:.6f}" if location and location.get('latitude') and location.get('longitude') else '<span style="color: #dc3545;">⚠️ Location data not available - GPS may have been disabled</span>'}</p>
-                    {f"<p><strong>🎯 Precision:</strong> ±{location.get('accuracy', 'Unknown')}m accuracy</p>" if location and location.get('accuracy') else "<p><strong>🎯 Precision:</strong> High precision GPS data</p>" if location else "<p><strong>🎯 Precision:</strong> <em>Location precision unknown</em></p>"}
-                    {f"<p><strong>🗺️ Map Link:</strong> <a href='https://www.google.com/maps?q={location['latitude']},{location['longitude']}' target='_blank' style='color: #007bff; text-decoration: none;'>📍 View on Google Maps</a></p>" if location and location.get('latitude') and location.get('longitude') else "<p><strong>🗺️ Map Link:</strong> <em>Not available without GPS coordinates</em></p>"}
-                </div>
-
-                <div class="info-card">
-                    <h3>Detected Hazards</h3>
-                    {"<p style='text-align: center; color: #28a745; font-size: 18px;'>❌ No Potholes detected in this image</p>" if not detections else f"""
-                    <table>
-                        <tr>
-                            <th>Detection #</th>
-                            <th>Type</th>
-                            <th>Severity</th>
-                            <th>Confidence</th>
-                            <th>Size</th>
-                        </tr>
-                        {chr(10).join([
-                            f'''<tr>
-                                <td>#{i+1}</td>
-                                <td>{d['class'].title()}</td>
-                                <td><span class="badge badge-{d['severity'].lower()}">{d['severity']}</span></td>
-                                <td>{d['confidence']*100:.1f}%</td>
-                                <td>{d.get('relative_size', 0)*100:.1f}% of image</td>
-                            </tr>''' for i, d in enumerate(detections)
-                        ])}
-                    </table>
-                    """}
-                </div>
-
-                <div class="info-card map-container">
-                    <h3>📍 Location Map</h3>
-                    {f'<img src="cid:map_image" alt="Pothole location map" style="border: 3px solid #dee2e6; max-width: 100%; height: auto;">' if map_path else '<p style="color: #6c757d;">📍 Location map not available - GPS coordinates may be missing</p>'}
-                    {f'<p style="margin-top: 10px; color: #6c757d; font-size: 14px;">📍 Exact location: {location["latitude"]:.6f}, {location["longitude"]:.6f}</p>' if location else ''}
-                </div>
-
-                <div class="info-card map-container">
-                    <h3>Model Detected Image</h3>
-                    <img src="cid:detection_image" alt="AI-analyzed pothole detection" style="border: 3px solid #007bff;">
-                    <p style="margin-top: 10px; color: #6c757d; font-size: 14px;">
-                        Image processed using YOLOv8 machine learning model
-                    </p>
+                <div class="footer">
+                    <p><strong>FixMyPothole.AI</strong> - Professional Road Infrastructure Analysis</p>
+                    <p>This report was generated automatically using artificial intelligence technology.</p>
+                    <p>For questions or concerns, please contact your local road maintenance authority.</p>
                 </div>
             </div>
         </body>
@@ -426,18 +625,35 @@ def send_email_with_results(email, detections, image_path, location, user_info=N
         # Attach HTML body
         msg.attach(MIMEText(body, 'html'))
 
-        # Attach detection image
-        if image_path and os.path.exists(image_path):
-            print(f"Attaching detection image: {image_path}")
-            with open(image_path, 'rb') as f:
-                img_data = f.read()
+        # Attach detection images
+        if all_images and len(all_images) > 1:
+            # Handle multiple base64 images
+            for i, img_base64 in enumerate(all_images):
+                try:
+                    # Convert base64 to image data
+                    if img_base64.startswith('data:image'):
+                        img_base64 = img_base64.split(',')[1]
 
-            detection_img = MIMEImage(img_data, name="hazard_detection.jpg")
-            detection_img.add_header('Content-ID', '<detection_image>')
-            msg.attach(detection_img)
-            print("Detection image attached successfully")
+                    img_data = base64.b64decode(img_base64)
+                    detection_img = MIMEImage(img_data, name=f"hazard_detection_{i+1}.jpg")
+                    detection_img.add_header('Content-ID', f'<detection_image_{i}>')
+                    msg.attach(detection_img)
+                    print(f"Attached base64 image {i+1}")
+                except Exception as e:
+                    print(f"Failed to attach image {i+1}: {e}")
         else:
-            print(f"Detection image not attached - path: {image_path}, exists: {os.path.exists(image_path) if image_path else False}")
+            # Attach single image (backward compatibility)
+            if image_path and os.path.exists(image_path):
+                print(f"Attaching detection image: {image_path}")
+                with open(image_path, 'rb') as f:
+                    img_data = f.read()
+
+                detection_img = MIMEImage(img_data, name="hazard_detection.jpg")
+                detection_img.add_header('Content-ID', '<detection_image>')
+                msg.attach(detection_img)
+                print("Detection image attached successfully")
+            else:
+                print(f"Detection image not attached - path: {image_path}, exists: {os.path.exists(image_path) if image_path else False}")
 
         # Attach logo image
         logo_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'logo2.jpg')
@@ -528,6 +744,18 @@ def api_detect_potholes():
                 code='EMPTY_FILENAME'
             )), 400
 
+        # Check file size (limit to 10MB)
+        file.seek(0, 2)  # Seek to end of file
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+
+        if file_size > 10 * 1024 * 1024:  # 10MB limit
+            return jsonify(create_api_response(
+                success=False,
+                error='File size too large. Maximum size is 10MB.',
+                code='FILE_TOO_LARGE'
+            )), 400
+
         # Get optional parameters
         email = request.form.get('email')
         send_email = request.form.get('send_email', 'false').lower() == 'true'
@@ -586,40 +814,81 @@ def api_detect_potholes():
             print(f"Annotated image saved to: {annotated_path}")
             print(f"Annotated image URL: {annotated_url}")
 
-        # Get user information from request
+        # Get user information from request with validation
+        user_name = request.form.get('user_name', 'Unknown User')
+        user_email = request.form.get('user_email', 'N/A')
+
+        # Basic input sanitization
+        if user_name:
+            user_name = user_name.strip()[:100]  # Limit length and trim whitespace
+        if user_email:
+            user_email = user_email.strip()[:100]  # Limit length and trim whitespace
+
         user_info = {
-            'name': request.form.get('user_name', 'Unknown User'),
-            'email': request.form.get('user_email', 'N/A')
+            'name': user_name,
+            'email': user_email
         }
+
+        # Extract additional multi-image data
+        all_images_data = request.form.get('all_images')
+        all_detections_data = request.form.get('all_detections')
+
+        all_images = None
+        all_detections = None
+
+        try:
+            if all_images_data:
+                all_images = json.loads(all_images_data)
+                print(f"Received {len(all_images)} images for multi-image email")
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Invalid all_images data: {e}")
+
+        try:
+            if all_detections_data:
+                all_detections = json.loads(all_detections_data)
+                print(f"Received detections for {len(all_detections)} images")
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Invalid all_detections data: {e}")
 
         # Send email if requested and detections found
         email_sent = False
         email_error = None
 
         print(f"Email debug - send_email: {send_email}, email: {email}, detections_count: {len(detections)}, email_enabled: {email_enabled}")
+        print(f"Email debug - all_images: {len(all_images) if all_images else 0}, all_detections: {len(all_detections) if all_detections else 0}")
 
-        if send_email and email and detections and email_enabled:  # Only send if potholes detected
-            print(f"Sending admin email to: {email}")
-            email_sent, email_error = send_email_with_results(
-                email, detections, annotated_path if include_image else None, location, user_info
+        # Send email if requested (regardless of detections for comprehensive reporting)
+        if send_email and email and email_enabled:
+            # Clean the admin email address - remove any pipe-separated metadata
+            clean_admin_email = email.split('|')[0].strip() if '|' in email else email.strip()
+            print(f"Sending admin email to: {clean_admin_email}")
+            email_sent, email_error = send_detailed_pothole_report(
+                clean_admin_email, detections, annotated_path if include_image else None, location, user_info, all_detections, all_images
             )
             print(f"Admin email result - sent: {email_sent}, error: {email_error}")
 
             # Also send to user email if different from admin email
-            user_email = user_info.get('email') if user_info else None
-            print(f"User email check - user_email: {user_email}, admin_email: {email}")
+            user_email_raw = user_info.get('email') if user_info else None
 
-            if user_email and user_email != email and user_email != 'N/A' and '@' in user_email:
+            # Clean the user email address - remove any pipe-separated metadata
+            user_email = None
+            if user_email_raw and user_email_raw != 'N/A':
+                # Extract just the email address part (before any pipe character)
+                user_email = user_email_raw.split('|')[0].strip() if '|' in user_email_raw else user_email_raw.strip()
+
+            print(f"User email check - user_email: {user_email}, admin_email: {clean_admin_email}")
+
+            if user_email and user_email != clean_admin_email and user_email != 'N/A' and '@' in user_email:
                 try:
                     print(f"Sending user email to: {user_email}")
-                    user_email_sent, user_email_error = send_email_with_results(
-                        user_email, detections, annotated_path if include_image else None, location, user_info
+                    user_email_sent, user_email_error = send_detailed_pothole_report(
+                        user_email, detections, annotated_path if include_image else None, location, user_info, all_detections, all_images
                     )
                     print(f"User email result - sent: {user_email_sent}, error: {user_email_error}")
                 except Exception as user_email_error:
                     print(f"Failed to send user email to {user_email}: {user_email_error}")
         else:
-            print(f"Email not sent - Reason: send_email={send_email}, email={bool(email)}, detections={len(detections)}, email_enabled={email_enabled}")
+            print(f"Email not sent - Reason: send_email={send_email}, email={bool(email)}, email_enabled={email_enabled}")
 
         # Prepare response data
         response_data = {
@@ -653,8 +922,8 @@ def api_detect_potholes():
         # Clean up original uploaded file
         try:
             os.remove(input_path)
-        except:
-            pass
+        except OSError as e:
+            print(f"Warning: Could not remove temporary file {input_path}: {e}")
 
         return jsonify(create_api_response(
             success=True,
@@ -776,6 +1045,141 @@ def api_system_info():
             }
         }
     ))
+
+@app.route(f'{API_PREFIX}/generate-description', methods=['POST'])
+def generate_description():
+    """Generate AI-powered description for pothole image"""
+    try:
+        if not gemini_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'Gemini AI is not available. Please check API key configuration.'
+            }), 503
+
+        # Get image from request
+        if 'image' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No image provided'
+            }), 400
+
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No image selected'
+            }), 400
+
+        # Get optional location data
+        location_data = request.form.get('location', '{}')
+        try:
+            location = json.loads(location_data)
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Warning: Invalid location data: {e}")
+            location = {}
+
+        # Process image
+        image_bytes = image_file.read()
+        image = PILImage.open(io.BytesIO(image_bytes))
+
+        # Prepare prompt for Gemini
+        prompt = f"""
+        Analyze this road image for potholes and road damage. Provide a professional report description including:
+
+        1. Damage Assessment: Describe the type and extent of road damage visible
+        2. Severity Level: Rate as High, Medium, or Low based on size and depth
+        3. Safety Impact: Explain potential risks to vehicles and pedestrians
+        4. Location Context: Describe the road type and surrounding area
+        5. Repair Urgency: Recommend priority level for repairs
+        6. Future Prediction: Predict the weather of that location and future of the potholes increment or decrement.
+        Start every point's paragragh with a new line
+        Location context: {location.get('address', 'Location not specified')}
+
+        Format the response as a clear, professional report suitable for government authorities.
+        Keep it concise but comprehensive (2 paragraphs).
+        """
+
+        # Generate description using Gemini with retry logic
+        max_retries = 3
+        retry_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                # Try main model first, then fallback model if available
+                current_model = gemini_model
+                if attempt > 0 and gemini_fallback_model:
+                    current_model = gemini_fallback_model
+                    print(f"Using fallback model on attempt {attempt + 1}")
+
+                response = current_model.generate_content([prompt, image])
+
+                if response.text:
+                    return jsonify({
+                        'success': True,
+                        'description': response.text.strip(),
+                        'generated_at': datetime.now().isoformat()
+                    })
+                else:
+                    raise Exception("Empty response from Gemini")
+
+            except Exception as gemini_error:
+                error_message = str(gemini_error).lower()
+
+                # Handle specific Gemini errors
+                if '503' in error_message or 'overloaded' in error_message:
+                    if attempt < max_retries - 1:
+                        print(f"Gemini overloaded, retrying in {retry_delay} seconds... (attempt {attempt + 1}/{max_retries})")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Gemini AI is currently overloaded. Please try again in a few minutes.',
+                            'error_type': 'overloaded'
+                        }), 503
+
+                elif 'timeout' in error_message:
+                    return jsonify({
+                        'success': False,
+                        'error': 'AI description generation timed out. Please try again.',
+                        'error_type': 'timeout'
+                    }), 408
+
+                elif 'quota' in error_message or 'limit' in error_message:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Daily AI quota exceeded. Please try again tomorrow.',
+                        'error_type': 'quota_exceeded'
+                    }), 429
+
+                else:
+                    # Generic error
+                    if attempt < max_retries - 1:
+                        print(f"Gemini error, retrying... (attempt {attempt + 1}/{max_retries}): {gemini_error}")
+                        import time
+                        time.sleep(1)
+                        continue
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': f'AI description generation failed: {str(gemini_error)}',
+                            'error_type': 'generation_failed'
+                        }), 500
+
+        # This shouldn't be reached, but just in case
+        return jsonify({
+            'success': False,
+            'error': 'Failed to generate description after multiple attempts'
+        }), 500
+
+    except Exception as e:
+        print(f"Error generating description: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to generate description: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # Verify environment variables

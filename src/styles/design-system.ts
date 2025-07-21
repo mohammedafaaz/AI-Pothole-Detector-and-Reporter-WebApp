@@ -47,21 +47,43 @@ export const designSystem = {
         accent: '#eab308'
       },
       in_progress: {
-        bg: '#eff6ff', 
+        bg: '#eff6ff',
         border: '#93c5fd',
         text: '#1d4ed8',
         accent: '#3b82f6'
       },
       resolved: {
         bg: '#f0fdf4',
-        border: '#86efac', 
+        border: '#86efac',
         text: '#15803d',
         accent: '#22c55e'
       },
       rejected: {
         bg: '#fef2f2',
         border: '#fca5a5',
-        text: '#dc2626', 
+        text: '#dc2626',
+        accent: '#ef4444'
+      }
+    },
+
+    // Verification colors - trust and validation
+    verification: {
+      pending: {
+        bg: '#fefce8',
+        border: '#fde047',
+        text: '#a16207',
+        accent: '#eab308'
+      },
+      verified: {
+        bg: '#ecfdf5',
+        border: '#86efac',
+        text: '#059669',
+        accent: '#10b981'
+      },
+      rejected: {
+        bg: '#fef2f2',
+        border: '#fca5a5',
+        text: '#dc2626',
         accent: '#ef4444'
       }
     },
@@ -195,4 +217,8 @@ export const getStatusColor = (status: string) => {
 
 export const getSeverityColor = (severity: string) => {
   return designSystem.colors.severity[severity as keyof typeof designSystem.colors.severity] || designSystem.colors.severity.medium;
+};
+
+export const getVerificationColor = (verification: string) => {
+  return designSystem.colors.verification[verification as keyof typeof designSystem.colors.verification] || designSystem.colors.verification.pending;
 };

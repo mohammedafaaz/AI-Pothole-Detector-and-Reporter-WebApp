@@ -198,6 +198,7 @@ const GovDashboard: React.FC = () => {
                     key={report.id}
                     report={report}
                     isGovView={true}
+                    showAnnotatedImages={true}
                   />
                 ))}
               </div>

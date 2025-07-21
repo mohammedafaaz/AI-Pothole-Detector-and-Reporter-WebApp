@@ -15,8 +15,7 @@ const Profile: React.FC = () => {
     updateGovProfile,
     getBadge,
     reports,
-    logout,
-    setGovLocation
+    logout
   } = useAppStore();
   
   // Citizen user state
