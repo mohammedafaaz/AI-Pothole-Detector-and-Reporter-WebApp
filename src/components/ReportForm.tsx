@@ -30,6 +30,11 @@ const ReportForm: React.FC = () => {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [analysisSuccess, setAnalysisSuccess] = useState(false);
 
+  // Two-tier validation states
+  const [geminiValidating, setGeminiValidating] = useState(false);
+  const [geminiValidated, setGeminiValidated] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
+
   // AI Description states
   const [aiDescription, setAiDescription] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -71,6 +76,11 @@ const ReportForm: React.FC = () => {
     setAnalysisSuccess(false);
     setAllDetections([]);
     setAnnotatedImageUrls([]);
+
+    // Reset two-tier validation states
+    setGeminiValidating(false);
+    setGeminiValidated(false);
+    setValidationMessage('');
 
     // Convert base64 to File for AI description (use the most recently captured photo)
     try {
@@ -183,22 +193,31 @@ const ReportForm: React.FC = () => {
       setProgressValue(100);
 
       if (errors.length > 0) {
+        // Primary validation (YOLOv8) failed - no potholes detected
         setValidationErrors(errors);
-        setError(`Among the ${photos.length} images captured, ${errors.join(', ')}. Please capture only images with potholes.`);
         setPotholeDetected(false);
-        setProgressMessage('Validation failed - some images do not contain potholes');
+        setProgressMessage('No potholes detected - checking for other road hazards...');
+
+        // Mark as analyzed first, then start secondary validation
+        setImagesAnalyzed(true);
+
+        // Start secondary validation with Gemini API (don't await here)
+        performGeminiValidation().catch(error => {
+          console.error('Gemini validation failed:', error);
+        });
       } else {
+        // Primary validation (YOLOv8) successful - potholes detected
         setPotholeDetected(true);
+        setValidationMessage('Potholes detected - Ready to submit report');
         setProgressMessage(`Analysis complete! All ${photos.length} images contain potholes.`);
         setAnalysisSuccess(true);
+        setImagesAnalyzed(true);
 
         // Auto-hide success message after 8 seconds
         setTimeout(() => {
           setAnalysisSuccess(false);
         }, 8000);
       }
-
-      setImagesAnalyzed(true);
 
     } catch (error) {
       console.error('Error during image analysis:', error);
@@ -227,6 +246,70 @@ const ReportForm: React.FC = () => {
   const handleClearAIDescription = () => {
     setAiDescription('');
     setDescription('');
+  };
+
+  // Secondary validation using Gemini API for road hazards
+  const performGeminiValidation = async () => {
+    try {
+      setGeminiValidating(true);
+      setProgressMessage('Analyzing images for road hazards with AI...');
+
+      // Convert base64 photos to File objects for Gemini API
+      const imageFiles: File[] = [];
+      for (let i = 0; i < photos.length; i++) {
+        try {
+          const response = await fetch(photos[i]);
+          const blob = await response.blob();
+          const file = new File([blob], `image_${i + 1}.jpg`, { type: 'image/jpeg' });
+          imageFiles.push(file);
+        } catch (error) {
+          console.error(`Error converting image ${i + 1} to file:`, error);
+        }
+      }
+
+      if (imageFiles.length === 0) {
+        throw new Error('No valid images for Gemini validation');
+      }
+
+      // Call Gemini validation API
+      const api = new PotholeDetectionAPI(
+        import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'
+      );
+
+      const validationResult = await api.validateRoadHazards(imageFiles);
+
+      console.log('Gemini validation result:', validationResult);
+
+      setGeminiValidated(true);
+
+      if (validationResult.overall_hazard_detected) {
+        // Gemini detected road hazards
+        setPotholeDetected(true); // Enable submission
+        setValidationMessage('Road hazards detected - Ready to submit report');
+        setProgressMessage(`Road hazards detected in ${validationResult.hazard_count} of ${validationResult.total_images} images`);
+        setAnalysisSuccess(true);
+
+        // Auto-hide success message after 8 seconds
+        setTimeout(() => {
+          setAnalysisSuccess(false);
+        }, 8000);
+      } else {
+        // No road hazards detected by Gemini
+        setPotholeDetected(false); // Keep submission disabled
+        setValidationMessage('No road hazards detected in uploaded images - Please upload images showing road damage');
+        setError('No road hazards detected in uploaded images - Please upload images showing road damage');
+        setProgressMessage('No road hazards found - submission disabled');
+      }
+
+    } catch (error) {
+      console.error('Gemini validation failed:', error);
+      setPotholeDetected(false);
+      setValidationMessage('Validation failed - Please try again');
+      setError('Road hazard validation failed. Please try again.');
+      setProgressMessage('Validation error');
+    } finally {
+      setGeminiValidating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -485,6 +568,50 @@ const ReportForm: React.FC = () => {
             </div>
           )}
 
+          {/* Two-Tier Validation Status */}
+          {validationMessage && (
+            <div className={`mb-4 p-3 border rounded-lg ${
+              potholeDetected
+                ? 'bg-green-50 border-green-200'
+                : 'bg-yellow-50 border-yellow-200'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    potholeDetected
+                      ? 'bg-green-100'
+                      : 'bg-yellow-100'
+                  }`}>
+                    {geminiValidating ? (
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className={`w-5 h-5 ${
+                        potholeDetected ? 'text-green-600' : 'text-yellow-600'
+                      }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d={potholeDetected
+                                ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                : "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"} />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${
+                    potholeDetected ? 'text-green-800' : 'text-yellow-800'
+                  }`}>
+                    {validationMessage}
+                  </p>
+                  {geminiValidating && (
+                    <p className="text-blue-600 text-xs mt-1">
+                      Analyzing with AI for road hazards...
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {photos.length > 0 ? (
             <div className="relative">
               <div className="relative">
@@ -633,22 +760,24 @@ const ReportForm: React.FC = () => {
           
           <button
             type="submit"
-            disabled={isSubmitting || photos.length === 0 || !imagesAnalyzed || !potholeDetected || validationErrors.length > 0}
+            disabled={isSubmitting || photos.length === 0 || !imagesAnalyzed || !potholeDetected || geminiValidating}
             className={`px-4 py-2 text-white rounded-lg transition-colors ${
-              potholeDetected && imagesAnalyzed && validationErrors.length === 0 && !isSubmitting
+              potholeDetected && imagesAnalyzed && !isSubmitting && !geminiValidating
                 ? 'bg-blue-500 hover:bg-blue-600'
                 : 'bg-gray-400 cursor-not-allowed'
             }`}
             title={
               !imagesAnalyzed ? 'Please analyze images first' :
-              validationErrors.length > 0 ? 'Some images do not contain potholes' :
-              !potholeDetected ? 'No potholes detected in images' : ''
+              geminiValidating ? 'AI validation in progress' :
+              validationErrors.length > 0 && !geminiValidated ? 'Some images do not contain potholes' :
+              !potholeDetected ? 'No road hazards detected in images' : ''
             }
           >
             {isSubmitting ? 'Submitting...' :
              !imagesAnalyzed ? 'Analyze Images First' :
-             validationErrors.length > 0 ? 'Capture Valid Image' :
-             !potholeDetected ? 'No Potholes Detected' :
+             geminiValidating ? 'Validating...' :
+             validationErrors.length > 0 && !geminiValidated ? 'Capture Valid Image' :
+             !potholeDetected ? 'No Road Hazards Detected' :
              'Submit Report'}
           </button>
         </div>

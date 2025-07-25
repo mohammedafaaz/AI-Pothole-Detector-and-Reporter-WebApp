@@ -94,7 +94,29 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isGovView = false }) =>
           </p>
           
           {report.description && (
-            <p className="text-sm mb-2 text-blue-200">{report.description}</p>
+            <div className="text-sm mb-2 text-blue-200">
+              {report.description.split('\n').map((line, index) => {
+                // Handle section headers (lines with **text**)
+                if (line.includes('**')) {
+                  const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                  return (
+                    <div key={index} className="mb-1">
+                      <div dangerouslySetInnerHTML={{ __html: formattedLine }} className="font-semibold text-blue-100" />
+                    </div>
+                  );
+                }
+                // Handle empty lines
+                if (line.trim() === '') {
+                  return <div key={index} className="mb-1" />;
+                }
+                // Handle regular content lines
+                return (
+                  <div key={index} className="mb-1 text-blue-200">
+                    {line.trim()}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 

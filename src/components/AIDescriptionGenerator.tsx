@@ -154,8 +154,28 @@ const AIDescriptionGenerator: React.FC<AIDescriptionGeneratorProps> = ({
             <Sparkles className="w-4 h-4 text-purple-600" />
             <span className="text-sm font-medium text-purple-700">AI Generated Description</span>
           </div>
-          <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {currentDescription}
+          <div className="text-sm text-gray-700 leading-relaxed">
+            {currentDescription.split('\n').map((line, index) => {
+              // Handle section headers (lines with **text**)
+              if (line.includes('**')) {
+                const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                return (
+                  <div key={index} className="mb-2">
+                    <div dangerouslySetInnerHTML={{ __html: formattedLine }} className="font-semibold text-gray-800" />
+                  </div>
+                );
+              }
+              // Handle empty lines
+              if (line.trim() === '') {
+                return <div key={index} className="mb-1" />;
+              }
+              // Handle regular content lines
+              return (
+                <div key={index} className="mb-1 ml-2 text-gray-700">
+                  {line.trim()}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

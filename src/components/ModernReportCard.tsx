@@ -285,10 +285,30 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
         {/* Description */}
         {report.description && (
           <div className="space-y-1">
-            <p className={`text-sm text-gray-600 ${!isExpanded ? 'line-clamp-2' : ''}`}>
-              {report.description}
-            </p>
-            {report.description.length > 100 && (
+            <div className={`text-sm text-gray-600 ${!isExpanded ? 'line-clamp-3' : ''}`}>
+              {report.description.split('\n').map((line, index) => {
+                // Handle section headers (lines with **text**)
+                if (line.includes('**')) {
+                  const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                  return (
+                    <div key={index} className="mb-1">
+                      <div dangerouslySetInnerHTML={{ __html: formattedLine }} className="font-semibold text-gray-800 text-xs" />
+                    </div>
+                  );
+                }
+                // Handle empty lines
+                if (line.trim() === '') {
+                  return <div key={index} className="mb-1" />;
+                }
+                // Handle regular content lines
+                return (
+                  <div key={index} className="mb-1 text-xs text-gray-600">
+                    {line.trim()}
+                  </div>
+                );
+              })}
+            </div>
+            {report.description.length > 150 && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="text-xs text-blue-600 hover:text-blue-700 font-medium"
