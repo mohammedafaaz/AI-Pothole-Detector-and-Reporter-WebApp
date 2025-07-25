@@ -4,13 +4,8 @@ import cv2
 import os
 import math
 import uuid
-import smtplib
-import ssl
 import requests
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from ultralytics import YOLO
 from PIL import Image as PILImage
 from werkzeug.utils import secure_filename
@@ -25,6 +20,7 @@ import io
 import time
 from collections import defaultdict
 import logging
+from email_service import EmailService
 
 # Note: Database imports removed - using localStorage only
 
@@ -70,15 +66,16 @@ load_dotenv()
 # Configuration with fallbacks
 config = {
     'MODEL_PATH': os.getenv('MODEL_PATH', 'best.pt'),
-    'EMAIL_USER': os.getenv('EMAIL_USER'),
-    'EMAIL_PASSWORD': os.getenv('EMAIL_PASSWORD'),
-    'SMTP_SERVER': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
-    'SMTP_PORT': int(os.getenv('SMTP_PORT', 587)),
     'CONFIDENCE_THRESHOLD': float(os.getenv('CONFIDENCE_THRESHOLD', 0.25)),
     'IMAGE_SIZE': int(os.getenv('IMAGE_SIZE', 640)),
     'MAPBOX_ACCESS_TOKEN': os.getenv('MAPBOX_ACCESS_TOKEN', ''),
     'API_KEY': os.getenv('API_KEY', None),  # Optional API key for authentication
-    'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY', '')  # Gemini API key
+    'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY', ''),  # Gemini API key
+    'EMAIL_USER': os.getenv('EMAIL_USER', ''),
+    'EMAIL_PASSWORD': os.getenv('EMAIL_PASSWORD', ''),
+    'SMTP_SERVER': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+    'SMTP_PORT': int(os.getenv('SMTP_PORT', 587)),
+    'ADMIN_EMAIL': os.getenv('ADMIN_EMAIL', '')
 }
 
 # Initialize Gemini AI
@@ -104,6 +101,7 @@ if config['GEMINI_API_KEY']:
         gemini_enabled = False
 else:
     print("⚠️ Gemini API key not provided - AI descriptions disabled")
+    gemini_enabled = False
 
 # Print configuration for debugging
 print("\nConfiguration values:")
@@ -112,6 +110,13 @@ for key, value in config.items():
         print(f"{key}: {'*' * len(value)}")
     else:
         print(f"{key}: {value}")
+
+# Print email configuration status
+email_enabled = bool(config['EMAIL_USER'] and config['EMAIL_PASSWORD'])
+print(f"Email service enabled: {email_enabled}")
+if email_enabled:
+    print(f"SMTP server: {config['SMTP_SERVER']}:{config['SMTP_PORT']}")
+    print(f"Admin email: {config['ADMIN_EMAIL']}")
 print(f"Gemini AI enabled: {gemini_enabled}")
 
 # Validate configuration
@@ -148,18 +153,8 @@ def validate_config():
 
 validate_config()
 
-# Check for email configuration
-email_enabled = bool(config['EMAIL_USER'] and config['EMAIL_PASSWORD'])
-if not email_enabled:
-    print("\nWARNING: Email configuration not found. Email notifications will be disabled.")
-    print("To enable email notifications, set EMAIL_USER and EMAIL_PASSWORD in your .env file")
-
 # Extract configuration
 MODEL_PATH = config['MODEL_PATH']
-EMAIL_USER = config['EMAIL_USER']
-EMAIL_PASSWORD = config['EMAIL_PASSWORD'].replace(' ', '') if config['EMAIL_PASSWORD'] else None
-SMTP_SERVER = config['SMTP_SERVER']
-SMTP_PORT = config['SMTP_PORT']
 CONFIDENCE_THRESHOLD = config['CONFIDENCE_THRESHOLD']
 IMAGE_SIZE = config['IMAGE_SIZE']
 MAPBOX_ACCESS_TOKEN = config['MAPBOX_ACCESS_TOKEN']
@@ -365,337 +360,8 @@ def get_address_from_coordinates(latitude, longitude):
         print(f"Error getting address: {str(e)}")
         return None
 
-def send_detailed_pothole_report(email, detections, image_path, location, user_info=None, all_detections=None, all_images=None):
-    """Send comprehensive pothole detection report via email with multiple images and detailed analysis"""
-    print(f"send_detailed_pothole_report called - email: {email}, detections: {len(detections) if detections else 0}, email_enabled: {email_enabled}")
-    print(f"Email config - EMAIL_USER: {EMAIL_USER}, EMAIL_PASSWORD: {'*' * len(EMAIL_PASSWORD) if EMAIL_PASSWORD else None}")
 
-    if not email_enabled:
-        print("Email not enabled - returning False")
-        return False, "Email not configured"
 
-    try:
-        # Create secure email context
-        context = ssl.create_default_context()
-
-        # Create message container
-        msg = MIMEMultipart()
-        msg['Subject'] = 'Pothole Detection Report - Detailed Analysis'
-        msg['From'] = EMAIL_USER
-        msg['To'] = email
-
-        # Current date and time
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Calculate detection statistics
-        total_detections = 0
-        highest_severity = 'Low'
-        max_confidence = 0.0
-
-        if all_detections:
-            # Count all detections across all images
-            for img_detections in all_detections:
-                total_detections += len(img_detections)
-                for detection in img_detections:
-                    if detection.get('confidence', 0) > max_confidence:
-                        max_confidence = detection['confidence']
-
-                    # Determine highest severity
-                    severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
-                    current_severity = detection.get('severity', 'Low')
-                    if severity_levels.get(current_severity, 1) > severity_levels.get(highest_severity, 1):
-                        highest_severity = current_severity
-        elif detections:
-            # Fallback to single detection list
-            total_detections = len(detections)
-            for detection in detections:
-                if detection.get('confidence', 0) > max_confidence:
-                    max_confidence = detection['confidence']
-
-                severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
-                current_severity = detection.get('severity', 'Low')
-                if severity_levels.get(current_severity, 1) > severity_levels.get(highest_severity, 1):
-                    highest_severity = current_severity
-
-        # Generate map and get address if location exists
-        map_path = None
-        detailed_address = None
-        print(f"📍 Map generation debug - location: {location}")
-        print(f"🗺️ MAPBOX_ACCESS_TOKEN available: {bool(MAPBOX_ACCESS_TOKEN)}")
-
-        if location and location.get('latitude') and location.get('longitude') and MAPBOX_ACCESS_TOKEN:
-            lat, lng = location['latitude'], location['longitude']
-            print(f"🗺️ Generating map for coordinates: {lat}, {lng}")
-
-            map_path = generate_static_map(lat, lng, highest_severity)
-            print(f"🗺️ Map generation result: {map_path}")
-
-            # Get detailed address
-            detailed_address = get_address_from_coordinates(lat, lng)
-            print(f"📍 Address lookup result: {detailed_address}")
-        else:
-            missing_items = []
-            if not location: missing_items.append("location data")
-            elif not location.get('latitude'): missing_items.append("latitude")
-            elif not location.get('longitude'): missing_items.append("longitude")
-            if not MAPBOX_ACCESS_TOKEN: missing_items.append("Mapbox token")
-            print(f"❌ Map not generated - missing: {', '.join(missing_items)}")
-
-        # Get user info for detailed report
-        user_name = user_info.get('name', 'Unknown User') if user_info else 'Unknown User'
-        user_email_raw = user_info.get('email', 'N/A') if user_info else 'N/A'
-
-        # Clean user data - remove any pipe-separated metadata
-        if '|' in user_name:
-            user_name = user_name.split('|')[0].strip()
-        if '|' in user_email_raw:
-            user_email_raw = user_email_raw.split('|')[0].strip()
-
-        user_email = user_email_raw
-
-        # Create detailed email body without emojis
-        body = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #f8f9fa; }}
-                .container {{ max-width: 800px; margin: 0 auto; background: white; }}
-                .header {{ background: linear-gradient(135deg, #2c3e50, #3498db); padding: 30px; text-align: center; color: white; }}
-                .content {{ padding: 30px; }}
-                .info-card {{ background: #f8f9fa; padding: 20px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #3498db; }}
-                .summary-card {{ background: #e8f4fd; padding: 20px; margin: 15px 0; border-radius: 8px; border: 1px solid #bee5eb; }}
-                h1 {{ margin: 0; font-size: 28px; font-weight: 300; }}
-                h2 {{ color: #2c3e50; margin-top: 0; font-size: 22px; }}
-                h3 {{ color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-bottom: 15px; }}
-                table {{ border-collapse: collapse; width: 100%; margin: 15px 0; background: white; }}
-                th, td {{ border: 1px solid #dee2e6; padding: 12px; text-align: left; }}
-                th {{ background-color: #f8f9fa; font-weight: 600; color: #495057; }}
-                .severity-high {{ color: #dc3545; font-weight: bold; }}
-                .severity-medium {{ color: #fd7e14; font-weight: bold; }}
-                .severity-low {{ color: #28a745; font-weight: bold; }}
-                .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }}
-                .stat-item {{ background: white; padding: 20px; text-align: center; border-radius: 8px; border: 1px solid #dee2e6; }}
-                .stat-number {{ font-size: 24px; font-weight: bold; color: #2c3e50; display: block; }}
-                .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
-                .image-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }}
-                .image-item {{ text-align: center; }}
-                .image-item img {{ max-width: 100%; border-radius: 8px; border: 2px solid #dee2e6; }}
-                .image-title {{ font-weight: bold; margin: 10px 0 5px 0; color: #495057; }}
-                .location-link {{ color: #3498db; text-decoration: none; font-weight: 500; }}
-                .location-link:hover {{ text-decoration: underline; }}
-                .footer {{ background: #ecf0f1; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <img src="cid:logo_image" alt="FixMyPothole.AI Logo" style="width: 60px; height: 60px; margin-bottom: 15px; border-radius: 8px;">
-                    <h1>Pothole Detection Report</h1>
-                    <p style="margin: 10px 0 0 0; opacity: 0.9;">Professional AI-Powered Road Analysis</p>
-                    <p style="margin: 5px 0 0 0; font-size: 14px; opacity: 0.8;">Report Generated: {current_time}</p>
-                </div>
-
-                <div class="content">
-                    <div class="summary-card">
-                        <h2>Detection Summary</h2>
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-number">{total_detections}</span>
-                                <div class="stat-label">Total Detections</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number severity-{highest_severity.lower()}">{highest_severity}</span>
-                                <div class="stat-label">Highest Severity</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number">{max_confidence*100:.1f}%</span>
-                                <div class="stat-label">Max Confidence</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number">{len(all_images) if all_images else 1}</span>
-                                <div class="stat-label">Images Analyzed</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>Reporter Information</h3>
-                        <table>
-                            <tr><td><strong>Name</strong></td><td>{user_name}</td></tr>
-                            <tr><td><strong>Email</strong></td><td>{user_email}</td></tr>
-                            <tr><td><strong>Report Time</strong></td><td>{current_time}</td></tr>
-                        </table>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>Location Information</h3>
-                        <table>
-                            <tr><td><strong>Address</strong></td><td>{detailed_address if detailed_address else 'Address lookup not available'}</td></tr>
-                            <tr><td><strong>GPS Coordinates</strong></td><td>{f"{location['latitude']:.6f}, {location['longitude']:.6f}" if location and location.get('latitude') and location.get('longitude') else 'Location data not available'}</td></tr>
-                            <tr><td><strong>Accuracy</strong></td><td>{f"±{location.get('accuracy', 'Unknown')}m" if location and location.get('accuracy') else 'High precision GPS' if location else 'Unknown'}</td></tr>
-                            <tr><td><strong>Map Link</strong></td><td>{f'<a href="https://www.google.com/maps?q={location["latitude"]},{location["longitude"]}" target="_blank" class="location-link">View on Google Maps</a>' if location and location.get('latitude') and location.get('longitude') else 'Not available'}</td></tr>
-                        </table>
-                    </div>
-
-                    <div class="info-card">
-                        <h3>Detection Results</h3>
-                        {f"""
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Image</th>
-                                    <th>Detection</th>
-                                    <th>Type</th>
-                                    <th>Severity</th>
-                                    <th>Confidence</th>
-                                    <th>Relative Size</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {chr(10).join([
-                                    f'''<tr>
-                                        <td>#{img_idx + 1}</td>
-                                        <td>#{det_idx + 1}</td>
-                                        <td>{d.get('class', 'Pothole').title()}</td>
-                                        <td><span class="severity-{d.get('severity', 'medium').lower()}">{d.get('severity', 'Medium')}</span></td>
-                                        <td>{d.get('confidence', 0)*100:.1f}%</td>
-                                        <td>{d.get('relative_size', 0)*100:.1f}%</td>
-                                    </tr>'''
-                                    for img_idx, img_detections in enumerate(all_detections or [detections] if detections else [])
-                                    for det_idx, d in enumerate(img_detections)
-                                ]) if (all_detections and any(len(img_dets) > 0 for img_dets in all_detections)) or detections else '<tr><td colspan="6" style="text-align: center; color: #28a745;">No potholes detected in the analyzed images</td></tr>'}
-                            </tbody>
-                        </table>
-                        """ if (all_detections and any(len(img_dets) > 0 for img_dets in all_detections)) or detections else '<p style="text-align: center; color: #28a745; font-size: 16px; padding: 20px;">No potholes detected in the analyzed images</p>'}
-                    </div>
-
-                    {f'''
-                    <div class="info-card">
-                        <h3>Location Map</h3>
-                        <div style="text-align: center; padding: 20px;">
-                            <img src="cid:map_image" alt="Pothole location map" style="max-width: 100%; border-radius: 8px; border: 2px solid #dee2e6;">
-                            <p style="margin-top: 15px; color: #6c757d; font-size: 14px;">
-                                Precise Location: {location["latitude"]:.6f}, {location["longitude"]:.6f}
-                            </p>
-                        </div>
-                    </div>
-                    ''' if map_path else '''
-                    <div class="info-card">
-                        <h3>Location Map</h3>
-                        <p style="text-align: center; color: #6c757d; padding: 20px;">
-                            Location map not available - GPS coordinates may be missing or Mapbox service unavailable
-                        </p>
-                    </div>
-                    '''}
-
-                    <div class="info-card">
-                        <h3>Analyzed Images</h3>
-                        <div class="image-grid">
-                            {chr(10).join([
-                                f'''<div class="image-item">
-                                    <div class="image-title">Image {i+1}</div>
-                                    <img src="cid:detection_image_{i}" alt="Pothole analysis image {i+1}">
-                                    <p style="color: #6c757d; font-size: 12px; margin-top: 8px;">AI-processed with detection overlay</p>
-                                </div>'''
-                                for i in range(len(all_images) if all_images else 1)
-                            ]) if all_images and len(all_images) > 1 else '''
-                            <div class="image-item">
-                                <div class="image-title">Analysis Result</div>
-                                <img src="cid:detection_image" alt="Pothole analysis result">
-                                <p style="color: #6c757d; font-size: 12px; margin-top: 8px;">AI-processed with detection overlay</p>
-                            </div>
-                            '''}
-                        </div>
-                        <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #dee2e6;">
-                            Images analyzed using YOLOv8 machine learning model for pothole detection
-                        </p>
-                    </div>
-                </div>
-
-                <div class="footer">
-                    <p><strong>FixMyPothole.AI</strong> - Professional Road Infrastructure Analysis</p>
-                    <p>This report was generated automatically using artificial intelligence technology.</p>
-                    <p>For questions or concerns, please contact your local road maintenance authority.</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-
-        # Attach HTML body
-        msg.attach(MIMEText(body, 'html'))
-
-        # Attach detection images
-        if all_images and len(all_images) > 1:
-            # Handle multiple base64 images
-            for i, img_base64 in enumerate(all_images):
-                try:
-                    # Convert base64 to image data
-                    if img_base64.startswith('data:image'):
-                        img_base64 = img_base64.split(',')[1]
-
-                    img_data = base64.b64decode(img_base64)
-                    detection_img = MIMEImage(img_data, name=f"hazard_detection_{i+1}.jpg")
-                    detection_img.add_header('Content-ID', f'<detection_image_{i}>')
-                    msg.attach(detection_img)
-                    print(f"Attached base64 image {i+1}")
-                except Exception as e:
-                    print(f"Failed to attach image {i+1}: {e}")
-        else:
-            # Attach single image (backward compatibility)
-            if image_path and os.path.exists(image_path):
-                print(f"Attaching detection image: {image_path}")
-                with open(image_path, 'rb') as f:
-                    img_data = f.read()
-
-                detection_img = MIMEImage(img_data, name="hazard_detection.jpg")
-                detection_img.add_header('Content-ID', '<detection_image>')
-                msg.attach(detection_img)
-                print("Detection image attached successfully")
-            else:
-                print(f"Detection image not attached - path: {image_path}, exists: {os.path.exists(image_path) if image_path else False}")
-
-        # Attach logo image
-        logo_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'logo2.jpg')
-        if os.path.exists(logo_path):
-            print(f"Attaching logo image: {logo_path}")
-            with open(logo_path, 'rb') as f:
-                logo_data = f.read()
-
-            logo_img = MIMEImage(logo_data, name="logo.jpg")
-            logo_img.add_header('Content-ID', '<logo_image>')
-            msg.attach(logo_img)
-            print("Logo attached")
-        else:
-            print(f"Logo not found at: {logo_path}")
-
-        # Attach map image if generated
-        if map_path and os.path.exists(map_path):
-            print(f"Attaching map image: {map_path}")
-            with open(map_path, 'rb') as f:
-                map_data = f.read()
-
-            map_img = MIMEImage(map_data, name="hazard_map.png")
-            map_img.add_header('Content-ID', '<map_image>')
-            msg.attach(map_img)
-            print("Map attached")
-        else:
-            print(f"Map not attached - path: {map_path}, exists: {os.path.exists(map_path) if map_path else False}")
-
-        # Send email with SSL
-        print(f"Attempting to send email to {email} via {SMTP_SERVER}:{SMTP_PORT}")
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls(context=context)
-            server.login(EMAIL_USER, EMAIL_PASSWORD)
-            server.send_message(msg)
-            print(f"Email successfully sent to {email}")
-
-        return True, None
-    except Exception as e:
-        error_msg = f"Email sending failed: {str(e)}"
-        app.logger.error(error_msg)
-        traceback.print_exc()
-        return False, error_msg
 
 #  API ENDPOINTS FOR REACT INTEGRATION 
 
@@ -708,11 +374,11 @@ def api_health():
             'status': 'healthy',
             'model_loaded': model is not None,
             'version': API_VERSION,
-            'email_enabled': email_enabled,
             'endpoints': [
                 f'{API_PREFIX}/health',
                 f'{API_PREFIX}/detect',
                 f'{API_PREFIX}/detect/batch',
+                f'{API_PREFIX}/send-report-email',
                 f'{API_PREFIX}/system/info'
             ]
         },
@@ -757,8 +423,6 @@ def api_detect_potholes():
             )), 400
 
         # Get optional parameters
-        email = request.form.get('email')
-        send_email = request.form.get('send_email', 'false').lower() == 'true'
         include_image = request.form.get('include_image', 'true').lower() == 'true'
 
         # Get location data
@@ -800,19 +464,30 @@ def api_detect_potholes():
         annotated_url = None
         annotated_path = None
         if include_image:
-            annotated_filename = f"annotated_{filename}"
-            annotated_path = os.path.join(OUTPUT_FOLDER, annotated_filename)
+            try:
+                annotated_filename = f"annotated_{filename}"
+                annotated_path = os.path.join(OUTPUT_FOLDER, annotated_filename)
 
-            # Save annotated image with detections drawn
-            for r in results:
-                # This saves the image with bounding boxes drawn
-                annotated_img = r.plot()  # Get the annotated image
-                import cv2
-                cv2.imwrite(annotated_path, annotated_img)
+                # Save annotated image with detections drawn
+                for r in results:
+                    # This saves the image with bounding boxes drawn
+                    annotated_img = r.plot()  # Get the annotated image
+                    import cv2
+                    cv2.imwrite(annotated_path, annotated_img)
 
-            annotated_url = f'/static/outputs/{annotated_filename}'
-            print(f"Annotated image saved to: {annotated_path}")
-            print(f"Annotated image URL: {annotated_url}")
+                annotated_url = f'/static/outputs/{annotated_filename}'
+                print(f"Annotated image saved to: {annotated_path}")
+                print(f"Annotated image URL: {annotated_url}")
+
+                # Schedule cleanup for annotated image too
+                import threading
+                cleanup_thread_annotated = threading.Timer(10.0, cleanup_file, args=[annotated_path])
+                cleanup_thread_annotated.start()
+
+            except Exception as e:
+                print(f"Warning: Could not save annotated image: {e}")
+                annotated_url = None
+                annotated_path = None
 
         # Get user information from request with validation
         user_name = request.form.get('user_name', 'Unknown User')
@@ -850,45 +525,7 @@ def api_detect_potholes():
         except (json.JSONDecodeError, TypeError) as e:
             print(f"Warning: Invalid all_detections data: {e}")
 
-        # Send email if requested and detections found
-        email_sent = False
-        email_error = None
 
-        print(f"Email debug - send_email: {send_email}, email: {email}, detections_count: {len(detections)}, email_enabled: {email_enabled}")
-        print(f"Email debug - all_images: {len(all_images) if all_images else 0}, all_detections: {len(all_detections) if all_detections else 0}")
-
-        # Send email if requested (regardless of detections for comprehensive reporting)
-        if send_email and email and email_enabled:
-            # Clean the admin email address - remove any pipe-separated metadata
-            clean_admin_email = email.split('|')[0].strip() if '|' in email else email.strip()
-            print(f"Sending admin email to: {clean_admin_email}")
-            email_sent, email_error = send_detailed_pothole_report(
-                clean_admin_email, detections, annotated_path if include_image else None, location, user_info, all_detections, all_images
-            )
-            print(f"Admin email result - sent: {email_sent}, error: {email_error}")
-
-            # Also send to user email if different from admin email
-            user_email_raw = user_info.get('email') if user_info else None
-
-            # Clean the user email address - remove any pipe-separated metadata
-            user_email = None
-            if user_email_raw and user_email_raw != 'N/A':
-                # Extract just the email address part (before any pipe character)
-                user_email = user_email_raw.split('|')[0].strip() if '|' in user_email_raw else user_email_raw.strip()
-
-            print(f"User email check - user_email: {user_email}, admin_email: {clean_admin_email}")
-
-            if user_email and user_email != clean_admin_email and user_email != 'N/A' and '@' in user_email:
-                try:
-                    print(f"Sending user email to: {user_email}")
-                    user_email_sent, user_email_error = send_detailed_pothole_report(
-                        user_email, detections, annotated_path if include_image else None, location, user_info, all_detections, all_images
-                    )
-                    print(f"User email result - sent: {user_email_sent}, error: {user_email_error}")
-                except Exception as user_email_error:
-                    print(f"Failed to send user email to {user_email}: {user_email_error}")
-        else:
-            print(f"Email not sent - Reason: send_email={send_email}, email={bool(email)}, email_enabled={email_enabled}")
 
         # Prepare response data
         response_data = {
@@ -912,18 +549,30 @@ def api_detect_potholes():
         if location:
             response_data['location'] = location
 
-        if send_email:
-            response_data['email'] = {
-                'sent': email_sent,
-                'error': email_error,
-                'recipient': email if email_sent else None
-            }
 
-        # Clean up original uploaded file
-        try:
-            os.remove(input_path)
-        except OSError as e:
-            print(f"Warning: Could not remove temporary file {input_path}: {e}")
+
+        # Clean up original uploaded file (with proper timing)
+        def cleanup_file(file_path):
+            """Safely cleanup temporary file with retry logic"""
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"Successfully removed temporary file: {file_path}")
+                    break
+                except OSError as e:
+                    if attempt < max_retries - 1:
+                        print(f"Attempt {attempt + 1}: Could not remove {file_path}, retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        print(f"Warning: Could not remove temporary file {file_path} after {max_retries} attempts: {e}")
+
+        # Schedule cleanup for later (after potential email processing)
+        import threading
+        cleanup_thread = threading.Timer(5.0, cleanup_file, args=[input_path])
+        cleanup_thread.start()
 
         return jsonify(create_api_response(
             success=True,
@@ -989,8 +638,26 @@ def api_batch_detect():
 
                 total_detections += len(detections)
 
-                # Clean up
-                os.remove(input_path)
+                # Clean up with proper timing
+                def cleanup_batch_file(file_path):
+                    """Safely cleanup batch file"""
+                    import time
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                            break
+                        except OSError as e:
+                            if attempt < max_retries - 1:
+                                time.sleep(0.5)
+                            else:
+                                print(f"Warning: Could not remove batch file {file_path}: {e}")
+
+                # Schedule cleanup
+                import threading
+                cleanup_thread = threading.Timer(2.0, cleanup_batch_file, args=[input_path])
+                cleanup_thread.start()
 
             except Exception as e:
                 batch_results.append({
@@ -1034,11 +701,7 @@ def api_system_info():
                 'image_size': IMAGE_SIZE,
                 'classes': list(model.names.values()) if model else []
             },
-            'email_config': {
-                'enabled': email_enabled,
-                'smtp_server': SMTP_SERVER,
-                'smtp_port': SMTP_PORT
-            },
+
             'api_info': {
                 'version': API_VERSION,
                 'authentication_required': bool(config['API_KEY'])
@@ -1181,16 +844,109 @@ def generate_description():
             'error': f'Failed to generate description: {str(e)}'
         }), 500
 
+@app.route(f'{API_PREFIX}/send-report-email', methods=['POST'])
+@require_api_key
+def send_report_email():
+    """
+    Send pothole report email to user and administrator
+    This endpoint is called after a report is successfully submitted
+    """
+    try:
+        # Get request data
+        data = request.get_json()
+
+        if not data:
+            return jsonify(create_api_response(
+                success=False,
+                error='No data provided',
+                code='MISSING_DATA'
+            )), 400
+
+        # Extract required fields
+        user_email = data.get('user_email')
+        user_name = data.get('user_name', 'Unknown User')
+        detections_data = data.get('detections_data', [])
+        location_data = data.get('location_data', {})
+        images_data = data.get('images_data', [])
+
+        # Debug logging for image data
+        print(f"Email endpoint received:")
+        print(f"  - User email: {user_email}")
+        print(f"  - Images count: {len(images_data)}")
+        for i, img_data in enumerate(images_data):
+            if img_data:
+                print(f"  - Image {i+1}: {len(str(img_data))} characters, starts with: {str(img_data)[:50]}...")
+            else:
+                print(f"  - Image {i+1}: EMPTY or None")
+        print(f"  - Detections count: {len(detections_data)}")
+
+        # Validate required fields
+        if not user_email:
+            return jsonify(create_api_response(
+                success=False,
+                error='User email is required',
+                code='MISSING_USER_EMAIL'
+            )), 400
+
+        if not images_data:
+            return jsonify(create_api_response(
+                success=False,
+                error='At least one image is required',
+                code='MISSING_IMAGES'
+            )), 400
+
+        # Initialize email service
+        try:
+            email_service = EmailService()
+        except ValueError as e:
+            return jsonify(create_api_response(
+                success=False,
+                error=f'Email service configuration error: {str(e)}',
+                code='EMAIL_CONFIG_ERROR'
+            )), 500
+
+        # Send emails (with small delay to ensure file operations are complete)
+        import time
+        time.sleep(0.5)  # Small delay to prevent file access conflicts
+
+        success, error_message = email_service.send_pothole_report(
+            user_email=user_email,
+            user_name=user_name,
+            detections_data=detections_data,
+            location_data=location_data,
+            images_data=images_data
+        )
+
+        if success:
+            return jsonify(create_api_response(
+                success=True,
+                data={
+                    'email_sent': True,
+                    'recipients': [email_service.admin_email]
+                },
+                message='Report email sent successfully to administrator'
+            ))
+        else:
+            return jsonify(create_api_response(
+                success=False,
+                error=f'Failed to send emails: {error_message}',
+                code='EMAIL_SEND_FAILED'
+            )), 500
+
+    except Exception as e:
+        logger.error(f"Error in send_report_email: {str(e)}")
+        return jsonify(create_api_response(
+            success=False,
+            error=f'Internal server error: {str(e)}',
+            code='INTERNAL_ERROR'
+        )), 500
+
 if __name__ == '__main__':
     # Verify environment variables
     print("\n" + "="*50)
     print("Starting Pothole Detection System")
     print("="*50)
     print(f"Model path: {MODEL_PATH}")
-    print(f"Email enabled: {email_enabled}")
-    if email_enabled:
-        print(f"Email user: {EMAIL_USER}")
-        print(f"SMTP server: {SMTP_SERVER}:{SMTP_PORT}")
     print(f"Mapbox enabled: {bool(MAPBOX_ACCESS_TOKEN)}")
     if MAPBOX_ACCESS_TOKEN:
         print(f"Mapbox token: {'*' * len(MAPBOX_ACCESS_TOKEN)}")
@@ -1199,4 +955,4 @@ if __name__ == '__main__':
     print(f"API version: {API_VERSION}")
     print("="*50)
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

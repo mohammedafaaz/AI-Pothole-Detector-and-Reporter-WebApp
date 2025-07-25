@@ -156,6 +156,36 @@ class PotholeDetectionAPI {
     }
   }
 
+  async sendReportEmail(emailData: {
+    user_email: string;
+    user_name: string;
+    detections_data: any[];
+    location_data: any;
+    images_data: string[];
+  }): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/send-report-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getHeaders()
+        },
+        body: JSON.stringify(emailData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      throw error;
+    }
+  }
+
   async getSystemInfo(): Promise<PotholeDetectionResponse> {
     try {
       const response = await fetch(`${this.baseURL}/system/info`, {

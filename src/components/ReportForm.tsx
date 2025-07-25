@@ -8,6 +8,7 @@ import CameraCapture from './CameraCapture';
 import AIDescriptionGenerator from './AIDescriptionGenerator';
 import usePotholeDetection from '../hooks/usePotholeDetection';
 import DetectionProgressBar from './DetectionProgressBar';
+import PotholeDetectionAPI from '../services/potholeAPI';
 
 const ReportForm: React.FC = () => {
   const navigate = useNavigate();
@@ -326,42 +327,56 @@ const ReportForm: React.FC = () => {
           allDetectionsData: allDetections
         });
 
-        // Send email for all reports (with or without detections)
+        // Send email for all reports using the new email service
         if (photos.length > 0) {
           try {
-            console.log('Attempting to send email...');
-            const result = await detectFromBase64(photos[bestImageIndex], {
-              includeImage: true,
-              email: 'mohammedafaaz433@gmail.com',
-              sendEmail: true,
-              location: {
+            console.log('Sending email report...');
+
+            // Prepare email data
+            const emailData = {
+              user_email: currentUser?.email || 'N/A',
+              user_name: currentUser?.name || 'Unknown User',
+              detections_data: allDetections,
+              location_data: {
                 latitude: latitude,
-                longitude: longitude
+                longitude: longitude,
+                address: address
               },
-              userInfo: {
-                name: currentUser?.name || 'Unknown User',
-                email: currentUser?.email || 'N/A'
-              },
-              // Send all images and detections for comprehensive email
-              allImages: photos,
-              allDetections: allDetections
+              images_data: photos  // Always send original base64 photos, not URLs
+            };
+
+            console.log('Email data prepared:', {
+              user_email: emailData.user_email,
+              images_count: emailData.images_data.length,
+              images_preview: emailData.images_data.map((img, i) =>
+                `Image ${i+1}: ${img ? img.substring(0, 50) + '...' : 'EMPTY'}`
+              )
             });
 
-            console.log('Email API response:', result);
-            console.log(`Email sent with comprehensive report for ${photos.length} images (${totalDetections} total potholes detected)`);
+            // Use the API service to send email
+            const api = new PotholeDetectionAPI(
+              import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'
+            );
+
+            const result = await api.sendReportEmail(emailData);
+            console.log('Email sent successfully:', result);
+            console.log(`Email report sent for ${photos.length} images (${totalDetections} total potholes detected)`);
           } catch (emailError) {
             console.error('Email sending failed:', emailError);
+            // Don't fail the submission if email fails
           }
         } else {
           console.log('No email sent - no photos available');
         }
-      } catch (emailError) {
-        console.error('Error sending email:', emailError);
-        // Don't fail the submission if email fails
-      }
 
-      // Navigate to home page
-      navigate('/home');
+        // Navigate to home page
+        navigate('/home');
+      } catch (emailError) {
+        console.error('Email sending failed:', emailError);
+        // Don't fail the submission if email fails
+        // Still navigate to home page even if email fails
+        navigate('/home');
+      }
     } catch (err) {
       console.error('Error submitting report:', err);
       
