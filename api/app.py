@@ -78,17 +78,38 @@ config = {
     'ADMIN_EMAIL': os.getenv('ADMIN_EMAIL', '')
 }
 
-# Initialize Gemini AI
+# Initialize Gemini AI with enhanced debugging
 gemini_enabled = False
 gemini_model = None
 gemini_fallback_model = None
 
+# Enhanced debugging for Railway deployment
+print("🔍 Gemini API Initialization Debug:")
+print(f"   Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+print(f"   API Key Present: {'Yes' if config['GEMINI_API_KEY'] else 'No'}")
+if config['GEMINI_API_KEY']:
+    print(f"   API Key Length: {len(config['GEMINI_API_KEY'])}")
+    print(f"   API Key Prefix: {config['GEMINI_API_KEY'][:10]}...")
+
 if config['GEMINI_API_KEY']:
     try:
+        print("🔧 Configuring Gemini API...")
         genai.configure(api_key=config['GEMINI_API_KEY'])
+
+        print("🤖 Initializing primary model (gemini-1.5-flash)...")
         gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+
+        # Test the model with a simple request
+        print("🧪 Testing Gemini API connection...")
+        test_response = gemini_model.generate_content("Hello, respond with 'API Working'")
+        if test_response and test_response.text:
+            print(f"✅ Gemini API test successful: {test_response.text.strip()}")
+        else:
+            print("⚠️ Gemini API test returned empty response")
+
         # Initialize fallback model
         try:
+            print("🔄 Initializing fallback model...")
             gemini_fallback_model = genai.GenerativeModel('gemini-1.0-pro-vision-latest')
             print("✅ Gemini AI initialized with fallback model")
         except Exception as e:
@@ -96,11 +117,24 @@ if config['GEMINI_API_KEY']:
 
         gemini_enabled = True
         print("✅ Gemini AI initialized successfully")
+
     except Exception as e:
         print(f"❌ Gemini AI initialization failed: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        print(f"   Error details: {str(e)}")
+
+        # Check for specific error types
+        if "API_KEY" in str(e).upper():
+            print("🔑 Issue appears to be API key related")
+        elif "QUOTA" in str(e).upper() or "LIMIT" in str(e).upper():
+            print("📊 Issue appears to be quota/rate limit related")
+        elif "NETWORK" in str(e).upper() or "CONNECTION" in str(e).upper():
+            print("🌐 Issue appears to be network/connection related")
+
         gemini_enabled = False
 else:
     print("⚠️ Gemini API key not provided - AI descriptions disabled")
+    print("   Set GEMINI_API_KEY environment variable to enable AI features")
     gemini_enabled = False
 
 # Print configuration for debugging
@@ -373,17 +407,74 @@ def api_health():
         data={
             'status': 'healthy',
             'model_loaded': model is not None,
+            'gemini_enabled': gemini_enabled,
             'version': API_VERSION,
+            'environment': os.getenv('RAILWAY_ENVIRONMENT', 'local'),
             'endpoints': [
                 f'{API_PREFIX}/health',
                 f'{API_PREFIX}/detect',
                 f'{API_PREFIX}/detect/batch',
                 f'{API_PREFIX}/send-report-email',
-                f'{API_PREFIX}/system/info'
+                f'{API_PREFIX}/system/info',
+                f'{API_PREFIX}/generate-description',
+                f'{API_PREFIX}/validate-road-hazards'
             ]
         },
         message='Pothole Detection API is running'
     ))
+
+@app.route(f'{API_PREFIX}/debug/gemini', methods=['GET'])
+def debug_gemini():
+    """Debug endpoint for Gemini API status - Railway deployment diagnostics"""
+    try:
+        debug_info = {
+            'environment': os.getenv('RAILWAY_ENVIRONMENT', 'local'),
+            'gemini_enabled': gemini_enabled,
+            'gemini_model_available': gemini_model is not None,
+            'gemini_fallback_available': gemini_fallback_model is not None,
+            'api_key_configured': bool(config.get('GEMINI_API_KEY')),
+            'api_key_length': len(config.get('GEMINI_API_KEY', '')) if config.get('GEMINI_API_KEY') else 0,
+            'python_version': os.sys.version,
+            'environment_variables': {
+                'RAILWAY_ENVIRONMENT': os.getenv('RAILWAY_ENVIRONMENT'),
+                'RAILWAY_PROJECT_ID': os.getenv('RAILWAY_PROJECT_ID'),
+                'RAILWAY_SERVICE_ID': os.getenv('RAILWAY_SERVICE_ID'),
+                'PORT': os.getenv('PORT'),
+            }
+        }
+
+        # Test Gemini API if available
+        if gemini_enabled and gemini_model:
+            try:
+                test_response = gemini_model.generate_content("Test connection - respond with 'OK'")
+                debug_info['gemini_test'] = {
+                    'success': True,
+                    'response': test_response.text.strip() if test_response and test_response.text else 'Empty response'
+                }
+            except Exception as e:
+                debug_info['gemini_test'] = {
+                    'success': False,
+                    'error': str(e),
+                    'error_type': type(e).__name__
+                }
+        else:
+            debug_info['gemini_test'] = {
+                'success': False,
+                'error': 'Gemini not enabled or model not available'
+            }
+
+        return jsonify(create_api_response(
+            success=True,
+            data=debug_info,
+            message='Gemini debug information'
+        ))
+
+    except Exception as e:
+        return jsonify(create_api_response(
+            success=False,
+            error=f'Debug endpoint failed: {str(e)}',
+            code='DEBUG_ERROR'
+        )), 500
 
 @app.route(f'{API_PREFIX}/detect', methods=['POST'])
 @require_api_key
@@ -711,12 +802,25 @@ def api_system_info():
 
 @app.route(f'{API_PREFIX}/generate-description', methods=['POST'])
 def generate_description():
-    """Generate AI-powered description for pothole image"""
+    """Generate AI-powered description for pothole image with enhanced debugging"""
     try:
+        # Enhanced debugging for Railway deployment
+        print(f"🔍 Description request received")
+        print(f"   Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+        print(f"   Gemini Enabled: {gemini_enabled}")
+        print(f"   Gemini Model Available: {gemini_model is not None}")
+
         if not gemini_enabled:
+            error_msg = 'Gemini AI is not available. Please check API key configuration.'
+            print(f"❌ {error_msg}")
             return jsonify({
                 'success': False,
-                'error': 'Gemini AI is not available. Please check API key configuration.'
+                'error': error_msg,
+                'debug_info': {
+                    'gemini_enabled': gemini_enabled,
+                    'api_key_present': bool(config.get('GEMINI_API_KEY')),
+                    'environment': os.getenv('RAILWAY_ENVIRONMENT', 'local')
+                }
             }), 503
 
         # Get image from request
@@ -770,28 +874,47 @@ def generate_description():
         Format with clear line breaks between sections for readability.
         """
 
-        # Generate description using Gemini with retry logic
+        # Generate description using Gemini with enhanced retry logic
         max_retries = 3
         retry_delay = 2  # seconds
 
+        print(f"🤖 Starting Gemini description generation...")
+        print(f"   Max retries: {max_retries}")
+        print(f"   Image size: {len(image_bytes)} bytes")
+
         for attempt in range(max_retries):
             try:
+                print(f"🔄 Attempt {attempt + 1}/{max_retries}")
+
                 # Try main model first, then fallback model if available
                 current_model = gemini_model
+                model_name = "gemini-1.5-flash"
+
                 if attempt > 0 and gemini_fallback_model:
                     current_model = gemini_fallback_model
-                    print(f"Using fallback model on attempt {attempt + 1}")
+                    model_name = "gemini-1.0-pro-vision-latest"
+                    print(f"   Using fallback model: {model_name}")
+                else:
+                    print(f"   Using primary model: {model_name}")
 
+                print(f"   Sending request to Gemini...")
                 response = current_model.generate_content([prompt, image])
+                print(f"   Received response from Gemini")
 
-                if response.text:
+                if response and response.text:
+                    response_text = response.text.strip()
+                    print(f"✅ Gemini response successful (length: {len(response_text)})")
                     return jsonify({
                         'success': True,
-                        'description': response.text.strip(),
-                        'generated_at': datetime.now().isoformat()
+                        'description': response_text,
+                        'generated_at': datetime.now().isoformat(),
+                        'model_used': model_name,
+                        'attempt': attempt + 1
                     })
                 else:
-                    raise Exception("Empty response from Gemini")
+                    error_msg = "Empty response from Gemini"
+                    print(f"⚠️ {error_msg}")
+                    raise Exception(error_msg)
 
             except Exception as gemini_error:
                 error_message = str(gemini_error).lower()
@@ -860,12 +983,25 @@ def validate_road_hazards():
     This is used as secondary validation when YOLOv8 doesn't detect potholes
     """
     try:
+        # Enhanced debugging for Railway deployment
+        print(f"🔍 Road hazard validation request received")
+        print(f"   Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+        print(f"   Gemini Enabled: {gemini_enabled}")
+        print(f"   Gemini Model Available: {gemini_model is not None}")
+
         # Check if Gemini is available
         if not gemini_model:
+            error_msg = 'Gemini AI service not available'
+            print(f"❌ {error_msg}")
             return jsonify(create_api_response(
                 success=False,
-                error='Gemini AI service not available',
-                code='GEMINI_UNAVAILABLE'
+                error=error_msg,
+                code='GEMINI_UNAVAILABLE',
+                debug_info={
+                    'gemini_enabled': gemini_enabled,
+                    'api_key_present': bool(config.get('GEMINI_API_KEY')),
+                    'environment': os.getenv('RAILWAY_ENVIRONMENT', 'local')
+                }
             )), 503
 
         # Get uploaded files
