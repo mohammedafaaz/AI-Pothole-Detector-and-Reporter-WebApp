@@ -156,47 +156,7 @@ class PotholeDetectionAPI {
     }
   }
 
-  async validateRoadHazards(images: File[]): Promise<{
-    overall_hazard_detected: boolean;
-    hazard_count: number;
-    total_images: number;
-    validation_results: Array<{
-      image_index: number;
-      hazard_detected: boolean;
-      confidence: number;
-      reasoning: string;
-    }>;
-    message: string;
-  }> {
-    try {
-      const formData = new FormData();
 
-      // Add images to form data
-      images.forEach((image, index) => {
-        formData.append('images', image, `image_${index + 1}.jpg`);
-      });
-
-      const response = await fetch(`${this.baseURL}/validate-road-hazards`, {
-        method: 'POST',
-        headers: {
-          ...this.getHeaders()
-          // Don't set Content-Type for FormData, let browser set it
-        },
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `HTTP error! status: ${response.status}`);
-      }
-
-      return result.data;
-    } catch (error) {
-      console.error('Road hazard validation failed:', error);
-      throw error;
-    }
-  }
 
   async sendReportEmail(emailData: {
     user_email: string;

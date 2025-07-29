@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Email Service Module for Pothole Detection System
 Sends clean, professional emails with pothole report data
@@ -102,7 +101,7 @@ class EmailService:
             msg_body = MIMEText(html_body, 'html')
             msg.attach(msg_body)
 
-            # Attach images as inline content
+            # Attach images as inline content (logo is now embedded directly in HTML)
             self._attach_images(msg, images_data)
             
             # Send email
@@ -150,11 +149,20 @@ class EmailService:
             lat = location_data.get('latitude')
             lng = location_data.get('longitude')
             address = location_data.get('address', '')
-            
+
             if lat is not None and lng is not None:
                 location_text = f"{lat:.6f}, {lng:.6f}"
                 if address:
                     location_text += f" - {address}"
+
+        # Get logo as base64 for direct embedding
+        logo_base64 = self._get_logo_base64()
+        logo_html = ""
+        if logo_base64:
+            logo_html = f'<img src="{logo_base64}" alt="FixMyPothole.AI Logo" style="max-height: 80px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(255,255,255,0.2);">'
+        else:
+            # Fallback to text-only header if logo fails
+            logger.warning("Logo not available, using text-only header")
         
         # Generate HTML
         html_body = f"""
@@ -166,9 +174,9 @@ class EmailService:
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f5f5f5; }}
                 .container {{ max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                .header {{ background: #2c3e50; color: white; padding: 30px; text-align: center; }}
-                .header h1 {{ margin: 0; font-size: 24px; }}
-                .header p {{ margin: 10px 0 0 0; opacity: 0.9; }}
+                .header {{ background: #2c3e50; color: white; padding: 40px 30px; text-align: center; }}
+                .header h1 {{ margin: 10px 0; font-size: 28px; font-weight: bold; }}
+                .header p {{ margin: 5px 0; opacity: 0.9; }}
                 .content {{ padding: 30px; }}
                 .section {{ margin-bottom: 25px; }}
                 .section h2 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; margin-bottom: 15px; }}
@@ -192,9 +200,10 @@ class EmailService:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>FixMyPothole.AI</h1>
-                    <p>Pothole Detection Report</p>
-                    <p>Generated: {current_time}</p>
+                    {logo_html}
+                    <h1 style="margin: 10px 0;">FixMyPothole.AI</h1>
+                    <p style="margin: 5px 0; font-size: 16px;">Pothole Detection Report</p>
+                    <p style="margin: 5px 0; font-size: 14px; opacity: 0.9;">Generated: {current_time}</p>
                 </div>
                 
                 <div class="content">
@@ -339,6 +348,37 @@ class EmailService:
         # Format the Google Maps URL as specified
         maps_url = f"https://www.google.com/maps?q={lat},{lng}"
         return f'<a href="{maps_url}" target="_blank" style="color: #3498db; text-decoration: none;">View on Google Maps</a>'
+
+    def _get_logo_base64(self):
+        """Get logo2.jpg as base64 string for direct HTML embedding"""
+        try:
+            # Get the path to logo2.jpg in public folder
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)  # Go up one level from api/
+            logo_path = os.path.join(project_root, 'public', 'logo2.jpg')
+
+            # Check if logo file exists
+            if not os.path.exists(logo_path):
+                logger.warning(f"Logo file not found at {logo_path}")
+                return None
+
+            # Read logo file and convert to base64
+            with open(logo_path, 'rb') as logo_file:
+                logo_data = logo_file.read()
+
+            logo_base64 = base64.b64encode(logo_data).decode('utf-8')
+            logger.info(f"Successfully loaded logo from {logo_path} (size: {len(logo_data)} bytes)")
+
+            return f"data:image/jpeg;base64,{logo_base64}"
+
+        except Exception as e:
+            logger.error(f"Failed to load logo: {e}")
+            return None
+
+    def _attach_logo(self, msg):
+        """Legacy method - now using base64 embedding instead"""
+        # This method is kept for compatibility but logo is now embedded directly in HTML
+        pass
     
     def _attach_images(self, msg, images_data):
         """Attach pothole images as inline embedded content with robust error handling"""
