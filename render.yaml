@@ -21,8 +21,9 @@ services:
         sync: false
 
   # Frontend (React / Vite build)
-  - type: static_site
+  - type: web
     name: pothole-detector-frontend
+    env: static
     buildCommand: npm install && npm run build
     publishDir: dist
     envVars:
