@@ -10,6 +10,16 @@ services:
         value: 3.9.0
       - key: GOOGLE_API_KEY
         sync: false # This will be set in Render dashboard
+      - key: EMAIL_USER
+        sync: false # Your Gmail address
+      - key: EMAIL_PASSWORD
+        sync: false # Your Gmail app password
+      - key: SMTP_SERVER
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: ADMIN_EMAIL
+        sync: false # Admin email for notifications
 
   # Frontend Service
   - type: web
