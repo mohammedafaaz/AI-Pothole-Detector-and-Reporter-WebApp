@@ -1,0 +1,24 @@
+services:
+  # Backend API Service
+  - type: web
+    name: pothole-detector-api
+    env: python
+    buildCommand: pip install -r api/requirements.txt
+    startCommand: cd api && gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: GOOGLE_API_KEY
+        sync: false # This will be set in Render dashboard
+
+  # Frontend Service
+  - type: web
+    name: pothole-detector-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run preview -- --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: 18.0.0
+      - key: VITE_API_URL
+        value: https://pothole-detector-api.onrender.com # Will be the URL of your API service

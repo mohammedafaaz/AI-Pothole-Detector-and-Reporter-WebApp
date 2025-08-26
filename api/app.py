@@ -44,7 +44,8 @@ RATE_LIMIT_WINDOW = 3600  # 1 hour in seconds
 app = Flask(__name__, static_url_path='/static')
 
 # Enable CORS for React frontend
-CORS(app, origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://localhost:5173'])
+CORS(app, origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://localhost:5173', 
+                  'https://*.onrender.com', 'https://*.vercel.app'])
 
 # Add security headers
 @app.after_request
