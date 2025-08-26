@@ -5,8 +5,9 @@ services:
     env: python
     buildCommand: pip install -r api/requirements.txt
     startCommand: cd api && gunicorn app:app
-    runtime: python3.9
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
       - key: GOOGLE_API_KEY
         sync: false
       - key: EMAIL_USER
