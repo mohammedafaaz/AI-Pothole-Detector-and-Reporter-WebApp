@@ -1,12 +1,11 @@
+services:
   # Backend API Service
-  services:
   - type: web
     name: pothole-detector-api
     env: python
     buildCommand: pip install -r api/requirements.txt
     startCommand: cd api && gunicorn app:app
     runtime: python3.9
-
     envVars:
       - key: GOOGLE_API_KEY
         sync: false
@@ -21,7 +20,7 @@
       - key: ADMIN_EMAIL
         sync: false
 
-  # Frontend Service (Static React/Vite Build)
+  # Frontend (React / Vite build)
   - type: static_site
     name: pothole-detector-frontend
     buildCommand: npm install && npm run build
