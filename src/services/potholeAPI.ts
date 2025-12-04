@@ -54,6 +54,7 @@ export interface DetectionOptions {
   };
   allImages?: string[];
   allDetections?: any[][];
+  detectionType?: 'pothole' | 'garbage';
 }
 
 class PotholeDetectionAPI {
@@ -109,6 +110,9 @@ class PotholeDetectionAPI {
       }
       if (options.allDetections) {
         formData.append('all_detections', JSON.stringify(options.allDetections));
+      }
+      if (options.detectionType) {
+        formData.append('detection_type', options.detectionType);
       }
 
       const response = await fetch(`${this.baseURL}/detect`, {

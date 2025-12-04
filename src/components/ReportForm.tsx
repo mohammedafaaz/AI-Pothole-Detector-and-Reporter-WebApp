@@ -34,6 +34,9 @@ const ReportForm: React.FC = () => {
   const [aiDescription, setAiDescription] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
+  
+  // Report type state
+  const [reportType, setReportType] = useState<'pothole' | 'garbage'>('pothole');
 
   // Progress bar states
   const [showProgress, setShowProgress] = useState<boolean>(false);
@@ -144,17 +147,26 @@ const ReportForm: React.FC = () => {
               name: currentUser?.name || 'Unknown User',
               email: currentUser?.email || 'N/A'
             }
-          });
+          }, reportType);
 
-          // Check if potholes were detected in this image
-          const hasValidPotholes = result.detections.length > 0 &&
-            result.detections.some(detection =>
-              detection.class.toLowerCase().includes('pothole') &&
-              detection.confidence > 0.3
-            );
-
-          if (!hasValidPotholes) {
-            errors.push(`Image #${i + 1} does not contain a pothole`);
+          // Check if appropriate objects were detected in this image
+          let hasValidDetections = false;
+          if (reportType === 'pothole') {
+            hasValidDetections = result.detections.length > 0 &&
+              result.detections.some(detection =>
+                detection.class.toLowerCase().includes('pothole') &&
+                detection.confidence > 0.3
+              );
+            if (!hasValidDetections) {
+              errors.push(`Image #${i + 1} does not contain a pothole`);
+            }
+          } else { // garbage
+            // Accept any detection from garbage model with sufficient confidence
+            hasValidDetections = result.detections.length > 0 &&
+              result.detections.some(detection => detection.confidence > 0.25);
+            if (!hasValidDetections) {
+              errors.push(`Image #${i + 1} does not contain garbage`);
+            }
           }
 
           newDetections.push(result.detections);
@@ -186,12 +198,14 @@ const ReportForm: React.FC = () => {
 
       if (errors.length > 0) {
         setValidationErrors(errors);
-        setError(`Among the ${photos.length} images captured, ${errors.join(', ')}. Please capture only images with potholes.`);
+        const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
+        setError(`Among the ${photos.length} images captured, ${errors.join(', ')}. Please capture only images with ${itemType}.`);
         setPotholeDetected(false);
-        setProgressMessage('Detection failed - some images do not contain potholes');
+        setProgressMessage(`Detection failed - some images do not contain ${itemType}`);
       } else {
         setPotholeDetected(true);
-        setProgressMessage(`Analysis complete! All ${photos.length} images contain potholes.`);
+        const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
+        setProgressMessage(`Analysis complete! All ${photos.length} images contain ${itemType}.`);
         setAnalysisSuccess(true);
 
         // Auto-hide success message after 8 seconds
@@ -237,12 +251,15 @@ const ReportForm: React.FC = () => {
     e.preventDefault();
 
     if (photos.length === 0) {
-      setError('Please capture at least one photo of the pothole');
+      const itemType = reportType === 'pothole' ? 'pothole' : 'garbage dump';
+      setError(`Please capture at least one photo of the ${itemType}`);
       return;
     }
 
     if (!potholeDetected) {
-      setError('No potholes detected in the captured image. Please capture a clearer image of the pothole.');
+      const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
+      const itemTypeSingle = reportType === 'pothole' ? 'pothole' : 'garbage dump';
+      setError(`No ${itemType} detected in the captured image. Please capture a clearer image of the ${itemTypeSingle}.`);
       return;
     }
 
@@ -294,7 +311,8 @@ const ReportForm: React.FC = () => {
         originalPhoto: photos[currentPhotoIndex], // Keep original photo as backup
         annotatedImageUrl: annotatedImageUrls[currentPhotoIndex] || undefined,
         upvotedBy: [],
-        downvotedBy: []
+        downvotedBy: [],
+        reportType: reportType // Add report type
       };
       
       // Add report to store
@@ -410,12 +428,37 @@ const ReportForm: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto p-6 animate-pop-in">
-      <h1 className="text-2xl font-bold mb-6">Report a Pothole</h1>
+      <h1 className="text-2xl font-bold mb-6">Report an Issue</h1>
       
       <form onSubmit={handleSubmit}>
+        {/* Report Type Selection */}
         <div className="mb-6">
           <label className="block text-gray-700 font-medium mb-2">
-            Pothole Photos <span className="text-red-500">*</span>
+            Issue Type <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={reportType}
+            onChange={(e) => {
+              setReportType(e.target.value as 'pothole' | 'garbage');
+              // Reset form when changing type
+              setPhotos([]);
+              setAllDetections([]);
+              setAnnotatedImageUrls([]);
+              setPotholeDetected(false);
+              setImagesAnalyzed(false);
+              setValidationErrors([]);
+              setAnalysisSuccess(false);
+              setCurrentPhotoIndex(0);
+            }}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value="pothole">Pothole</option>
+            <option value="garbage">Garbage Dump</option>
+          </select>
+        </div>
+        <div className="mb-6">
+          <label className="block text-gray-700 font-medium mb-2">
+            {reportType === 'pothole' ? 'Pothole' : 'Garbage Dump'} Photos <span className="text-red-500">*</span>
             <span className="text-sm text-gray-500 ml-2">
               ({photos.length} out of 5 images captured)
             </span>
@@ -469,8 +512,8 @@ const ReportForm: React.FC = () => {
                   <h3 className="text-green-800 font-semibold text-base">Analysis Successful!</h3>
                   <p className="text-green-700 text-sm mt-1">
                     {photos.length === 1
-                      ? 'Pothole detected in your image. You can now submit your report.'
-                      : `Potholes detected in all ${photos.length} images. You can now submit your report.`
+                      ? `${reportType === 'pothole' ? 'Pothole' : 'Garbage'} detected in your image. You can now submit your report.`
+                      : `${reportType === 'pothole' ? 'Potholes' : 'Garbage'} detected in all ${photos.length} images. You can now submit your report.`
                     }
                   </p>
                 </div>
@@ -647,14 +690,14 @@ const ReportForm: React.FC = () => {
             }`}
             title={
               !imagesAnalyzed ? 'Please analyze images first' :
-              validationErrors.length > 0 ? 'Some images do not contain potholes' :
-              !potholeDetected ? 'No potholes detected in images' : ''
+              validationErrors.length > 0 ? `Some images do not contain ${reportType === 'pothole' ? 'potholes' : 'garbage'}` :
+              !potholeDetected ? `No ${reportType === 'pothole' ? 'potholes' : 'garbage'} detected in images` : ''
             }
           >
             {isSubmitting ? 'Submitting...' :
              !imagesAnalyzed ? 'Analyze Images First' :
              validationErrors.length > 0 ? 'Capture Valid Image' :
-             !potholeDetected ? 'No Potholes Detected' :
+             !potholeDetected ? `No ${reportType === 'pothole' ? 'Potholes' : 'Garbage'} Detected` :
              'Submit Report'}
           </button>
         </div>

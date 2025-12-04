@@ -23,6 +23,8 @@ const GovDashboard: React.FC = () => {
     sortBy: 'date',
     sortOrder: 'desc'
   });
+  
+  const [selectedReportType, setSelectedReportType] = useState<'all' | 'pothole' | 'garbage'>('all');
 
   // Government location is set during profile setup, no auto-detection needed
   // Filter reports within 5km radius for government users with additional filters
@@ -31,6 +33,11 @@ const GovDashboard: React.FC = () => {
       ? filterReportsWithinRadius(reports, govLocation.lat, govLocation.lng, 5)
       : [];
 
+    // Report type filter
+    if (selectedReportType !== 'all') {
+      filtered = filtered.filter(report => report.reportType === selectedReportType);
+    }
+    
     // Severity filter
     if (filters.severity.length > 0) {
       filtered = filtered.filter(report => filters.severity.includes(report.severity));
@@ -86,7 +93,14 @@ const GovDashboard: React.FC = () => {
     });
 
     return filtered;
-  }, [reports, govLocation, filters]);
+  }, [reports, govLocation, filters, selectedReportType]);
+
+  // Calculate stats based on all reports in radius (not filtered by type)
+  const allReportsInRadius = useMemo(() => {
+    return govLocation
+      ? filterReportsWithinRadius(reports, govLocation.lat, govLocation.lng, 5)
+      : [];
+  }, [reports, govLocation]);
 
   // Calculate stats based on filtered reports
   const stats = {
@@ -94,7 +108,9 @@ const GovDashboard: React.FC = () => {
     pending: filteredReports.filter(r => r.verified === 'pending').length,
     inProgress: filteredReports.filter(r => r.fixingStatus === 'in_progress').length,
     resolved: filteredReports.filter(r => r.fixingStatus === 'resolved').length,
-    highSeverity: filteredReports.filter(r => r.severity === 'high').length
+    highSeverity: filteredReports.filter(r => r.severity === 'high').length,
+    potholeReports: allReportsInRadius.filter(r => r.reportType === 'pothole').length,
+    garbageReports: allReportsInRadius.filter(r => r.reportType === 'garbage').length
   };
   
   return (
@@ -144,8 +160,45 @@ const GovDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Filters */}
+        {/* Report Type Tabs */}
         <div className="px-4 md:px-6 pt-4 md:pt-4">
+          <div className="mb-6">
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setSelectedReportType('all')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    selectedReportType === 'all'
+                      ? 'border-red-500 text-red-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  All Reports ({allReportsInRadius.length})
+                </button>
+                <button
+                  onClick={() => setSelectedReportType('pothole')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    selectedReportType === 'pothole'
+                      ? 'border-red-500 text-red-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Pothole Reports ({stats.potholeReports})
+                </button>
+                <button
+                  onClick={() => setSelectedReportType('garbage')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    selectedReportType === 'garbage'
+                      ? 'border-red-500 text-red-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Garbage Reports ({stats.garbageReports})
+                </button>
+              </nav>
+            </div>
+          </div>
+          
           <ReportFilters
             filters={filters}
             onFiltersChange={setFilters}
@@ -207,7 +260,12 @@ const GovDashboard: React.FC = () => {
                 <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No reports found</h3>
                 <p className="text-gray-600 mb-4">
-                  No pothole reports submitted yet
+                  {selectedReportType === 'all' 
+                    ? 'No reports submitted yet'
+                    : selectedReportType === 'pothole'
+                    ? 'No pothole reports submitted yet'
+                    : 'No garbage dump reports submitted yet'
+                  }
                 </p>
               </Card>
             )}

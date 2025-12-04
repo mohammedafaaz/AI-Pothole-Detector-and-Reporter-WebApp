@@ -59,14 +59,15 @@ const usePotholeDetection = (apiKey: string | null = null) => {
     };
   }, [api]);
 
-  const detectPotholes = useCallback(async (imageFile: File, options: DetectionOptions = {}): Promise<PotholeDetectionResult> => {
+  const detectPotholes = useCallback(async (imageFile: File, options: DetectionOptions = {}, detectionType: 'pothole' | 'garbage' = 'pothole'): Promise<PotholeDetectionResult> => {
     setLoading(true);
     setError(null);
 
     try {
       const response = await api.detectPotholes(imageFile, {
         ...options,
-        includeImage: true // Always include annotated image
+        includeImage: true, // Always include annotated image
+        detectionType: detectionType // Pass detection type to API
       });
 
       const result = convertApiResponse(response);
@@ -109,7 +110,7 @@ const usePotholeDetection = (apiKey: string | null = null) => {
   }, [api]);
 
   // Convert base64 image to File for API
-  const detectFromBase64 = useCallback(async (base64Image: string, options: DetectionOptions = {}): Promise<PotholeDetectionResult> => {
+  const detectFromBase64 = useCallback(async (base64Image: string, options: DetectionOptions = {}, detectionType: 'pothole' | 'garbage' = 'pothole'): Promise<PotholeDetectionResult> => {
     // Convert base64 to blob
     const response = await fetch(base64Image);
     const blob = await response.blob();
@@ -117,7 +118,7 @@ const usePotholeDetection = (apiKey: string | null = null) => {
     // Create File from blob
     const file = new File([blob], 'captured-image.jpg', { type: 'image/jpeg' });
 
-    return detectPotholes(file, options);
+    return detectPotholes(file, options, detectionType);
   }, [detectPotholes]);
 
   return {

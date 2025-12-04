@@ -1,0 +1,11 @@
+train: /content/drive/MyDrive/YOLOv8/garbage_dataset/train/images
+val: /content/drive/MyDrive/YOLOv8/garbage_dataset/valid/images
+
+
+names: 
+  0: 0
+  1: c
+  2: garbage
+  3: garbage_bag
+  4: sampah-detection
+  5: trash

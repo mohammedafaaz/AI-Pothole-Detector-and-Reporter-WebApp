@@ -47,6 +47,7 @@ export interface Report {
   fixingStatus: 'pending' | 'in_progress' | 'resolved' | 'rejected';
   originalPhoto?: string; // Original photo before annotation
   annotatedImageUrl?: string; // URL to Flask API annotated image
+  reportType: 'pothole' | 'garbage'; // Type of report
 }
 
 export interface Detection {

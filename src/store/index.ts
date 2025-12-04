@@ -410,6 +410,7 @@ export const useAppStore = create(
           downvotedBy: [],
           verified: 'pending',
           fixingStatus: 'pending',
+          reportType: 'pothole', // Default to pothole for backward compatibility
           ...restReportData,
         };
         const locationText = newReport.location.address
@@ -420,12 +421,13 @@ export const useAppStore = create(
         const allUserNotifications: AppNotification[] = [];
 
         // Notify all citizens except the reporter
+        const reportTypeName = newReport.reportType === 'pothole' ? 'pothole' : 'garbage dump';
         Object.values(state.authenticatedUsers)
           .filter((u: any) => u.userData && (u.userData as User).id !== newReport.userId && !u.isGov)
           .forEach((u: any) => {
             allUserNotifications.push({
               id: `notif-${Date.now()}-${Math.random()}-citizen-${(u.userData as User).id}`,
-              message: `New pothole reported at ${locationText}.`,
+              message: `New ${reportTypeName} reported at ${locationText}.`,
               read: false,
               createdAt: new Date(),
               type: 'new_report',
@@ -454,7 +456,7 @@ export const useAppStore = create(
             if (distance <= 5) { // Within 5km radius
               allUserNotifications.push({
                 id: `notif-${Date.now()}-${Math.random()}-gov-${govData.id}`,
-                message: `New pothole reported at ${locationText} (within your area).`,
+                message: `New ${reportTypeName} reported at ${locationText} (within your area).`,
                 read: false,
                 createdAt: new Date(),
                 type: 'new_report',

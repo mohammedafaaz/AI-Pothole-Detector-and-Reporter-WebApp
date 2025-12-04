@@ -63,8 +63,7 @@ load_dotenv()
 
 # Configuration with fallbacks
 config = {
-    'POTHOLE_MODEL_PATH': os.getenv('POTHOLE_MODEL_PATH', 'best.pt'),
-    'GARBAGE_MODEL_PATH': os.getenv('GARBAGE_MODEL_PATH', 'best2.pt'),
+    'MODEL_PATH': os.getenv('MODEL_PATH', 'best.pt'),
     'CONFIDENCE_THRESHOLD': float(os.getenv('CONFIDENCE_THRESHOLD', 0.25)),
     'IMAGE_SIZE': int(os.getenv('IMAGE_SIZE', 640)),
     'MAPBOX_ACCESS_TOKEN': os.getenv('MAPBOX_ACCESS_TOKEN', ''),
@@ -125,15 +124,10 @@ if email_enabled:
 # Validate configuration
 def validate_config():
     errors = []
-    if not config['POTHOLE_MODEL_PATH']:
-        errors.append("POTHOLE_MODEL_PATH is required")
-    elif not os.path.exists(config['POTHOLE_MODEL_PATH']):
-        errors.append(f"Pothole model file not found: {config['POTHOLE_MODEL_PATH']}")
-    
-    if not config['GARBAGE_MODEL_PATH']:
-        errors.append("GARBAGE_MODEL_PATH is required")
-    elif not os.path.exists(config['GARBAGE_MODEL_PATH']):
-        errors.append(f"Garbage model file not found: {config['GARBAGE_MODEL_PATH']}")
+    if not config['MODEL_PATH']:
+        errors.append("MODEL_PATH is required")
+    elif not os.path.exists(config['MODEL_PATH']):
+        errors.append(f"Model file not found: {config['MODEL_PATH']}")
     
     try:
         if config['CONFIDENCE_THRESHOLD'] < 0 or config['CONFIDENCE_THRESHOLD'] > 1:
@@ -158,8 +152,7 @@ def validate_config():
 validate_config()
 
 # Extract configuration
-POTHOLE_MODEL_PATH = config['POTHOLE_MODEL_PATH']
-GARBAGE_MODEL_PATH = config['GARBAGE_MODEL_PATH']
+MODEL_PATH = config['MODEL_PATH']
 CONFIDENCE_THRESHOLD = config['CONFIDENCE_THRESHOLD']
 IMAGE_SIZE = config['IMAGE_SIZE']
 MAPBOX_ACCESS_TOKEN = config['MAPBOX_ACCESS_TOKEN']
@@ -170,19 +163,14 @@ OUTPUT_FOLDER = 'static/outputs'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Load YOLO models
+# Load YOLO model
 try:
-    print(f"\nLoading pothole model from: {POTHOLE_MODEL_PATH}")
-    pothole_model = YOLO(POTHOLE_MODEL_PATH)
-    print("Pothole model loaded successfully")
-    print(f"Pothole model classes: {list(pothole_model.names.values())}")
-    
-    print(f"\nLoading garbage model from: {GARBAGE_MODEL_PATH}")
-    garbage_model = YOLO(GARBAGE_MODEL_PATH)
-    print("Garbage model loaded successfully")
-    print(f"Garbage model classes: {list(garbage_model.names.values())}")
+    print(f"\nLoading model from: {MODEL_PATH}")
+    model = YOLO(MODEL_PATH)
+    print("Model loaded successfully")
+    print(f"Model classes: {list(model.names.values())}")
 except Exception as e:
-    print(f"Error loading models: {str(e)}")
+    print(f"Error loading model: {str(e)}")
     traceback.print_exc()
     sys.exit(1)
 
@@ -242,16 +230,13 @@ def create_api_response(success=True, data=None, error=None, code=None, message=
     return response
 
 # Helper function to process detection results
-def process_detection_results(results, image_width, image_height, input_path, model_used):
+def process_detection_results(results, image_width, image_height, input_path):
     detections = []
     image_diag = math.sqrt(image_width**2 + image_height**2)
     
     for r in results:
         for box in r.boxes:
-            if model_used == 'pothole':
-                cls = pothole_model.names[int(box.cls)]
-            else:
-                cls = garbage_model.names[int(box.cls)]
+            cls = model.names[int(box.cls)]
             conf = float(box.conf)
             
             x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -290,8 +275,7 @@ def api_health():
         success=True,
         data={
             'status': 'healthy',
-            'pothole_model_loaded': pothole_model is not None,
-            'garbage_model_loaded': garbage_model is not None,
+            'model_loaded': model is not None,
             'gemini_enabled': gemini_enabled,
             'version': API_VERSION,
             'endpoints': [
@@ -300,12 +284,12 @@ def api_health():
                 f'{API_PREFIX}/generate-description'
             ]
         },
-        message='Dual Detection API is running'
+        message='Pothole Detection API is running'
     ))
 
 @app.route(f'{API_PREFIX}/detect', methods=['POST'])
 @require_api_key
-def api_detect():
+def api_detect_potholes():
     try:
         if 'image' not in request.files:
             return jsonify(create_api_response(
@@ -322,17 +306,8 @@ def api_detect():
                 code='EMPTY_FILENAME'
             )), 400
         
-        # Get detection type from request
-        detection_type = request.form.get('detection_type', 'pothole').lower()
-        if detection_type not in ['pothole', 'garbage']:
-            return jsonify(create_api_response(
-                success=False,
-                error='Invalid detection type. Must be "pothole" or "garbage"',
-                code='INVALID_DETECTION_TYPE'
-            )), 400
-        
         # Save uploaded image
-        filename = secure_filename(f"api_detection_{detection_type}_{uuid.uuid4().hex}.jpg")
+        filename = secure_filename(f"api_detection_{uuid.uuid4().hex}.jpg")
         input_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(input_path)
         
@@ -340,39 +315,14 @@ def api_detect():
         img = PILImage.open(input_path)
         image_width, image_height = img.size
         
-        # Select appropriate model and run detection
-        if detection_type == 'pothole':
-            results = pothole_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
-        else:  # garbage
-            results = garbage_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
-        
-        detections = process_detection_results(results, image_width, image_height, input_path, detection_type)
-        
-        # Debug: Print detection info for garbage
-        if detection_type == 'garbage':
-            print(f"Garbage model detections: {len(detections)} found")
-            for det in detections:
-                print(f"  Class: {det['class']}, Confidence: {det['confidence']:.3f}")
-        
-        # Filter detections for relevant classes
-        filtered_detections = []
-        for detection in detections:
-            if detection_type == 'pothole':
-                if 'pothole' in detection['class'].lower():
-                    filtered_detections.append(detection)
-            else:  # garbage
-                # Accept ALL detections from garbage model (any class with sufficient confidence)
-                if detection['confidence'] >= CONFIDENCE_THRESHOLD:
-                    # Normalize class name to 'garbage' for display
-                    detection_copy = detection.copy()
-                    detection_copy['class'] = 'garbage'
-                    filtered_detections.append(detection_copy)
+        # Run detection
+        results = model(input_path, conf=max(CONFIDENCE_THRESHOLD, 0.3), imgsz=IMAGE_SIZE)
+        detections = process_detection_results(results, image_width, image_height, input_path)
         
         # Prepare response data
         response_data = {
-            'detections': filtered_detections,
-            'detection_count': len(filtered_detections),
-            'detection_type': detection_type,
+            'detections': detections,
+            'detection_count': len(detections),
             'image_info': {
                 'width': image_width,
                 'height': image_height,
@@ -392,19 +342,10 @@ def api_detect():
         cleanup_thread = threading.Timer(5.0, cleanup_file, args=[input_path])
         cleanup_thread.start()
         
-        detection_name = detection_type.replace('_', ' ').title()
-        if len(filtered_detections) == 0:
-            if detection_type == 'garbage':
-                message = 'No garbage present.'
-            else:
-                message = f'No {detection_name.lower()} detected.'
-        else:
-            message = f'Detection completed. Found {len(filtered_detections)} {detection_name.lower()}(s).'
-        
         return jsonify(create_api_response(
             success=True,
             data=response_data,
-            message=message
+            message=f'Detection completed. Found {len(detections)} pothole(s).'
         ))
     
     except Exception as e:
@@ -530,10 +471,9 @@ def generate_description():
 
 if __name__ == '__main__':
     print("\n" + "="*50)
-    print("Starting Dual Detection System with Gemini AI")
+    print("Starting Pothole Detection System with Gemini AI")
     print("="*50)
-    print(f"Pothole model path: {POTHOLE_MODEL_PATH}")
-    print(f"Garbage model path: {GARBAGE_MODEL_PATH}")
+    print(f"Model path: {MODEL_PATH}")
     print(f"Gemini AI enabled: {gemini_enabled}")
     print(f"API version: {API_VERSION}")
     print("="*50)
