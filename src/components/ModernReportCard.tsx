@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Report } from '../types';
 import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 import {
   ThumbsUp, ThumbsDown, Trash2, MapPin, Calendar, User, Eye,
   AlertTriangle, MoreVertical
@@ -26,7 +27,8 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
     isGovUser,
     voteReport,
     deleteReport,
-    updateReport
+    updateReport,
+    language
   } = useAppStore();
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -43,7 +45,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
   };
 
   const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this report?')) {
+    if (window.confirm(t('confirm_delete', language))) {
       deleteReport(report.id);
     }
   };
@@ -54,6 +56,10 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
 
   const handleFixingStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     updateReport(report.id, { fixingStatus: e.target.value as 'pending' | 'in_progress' | 'resolved' | 'rejected' });
+  };
+
+  const handleSeverityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateReport(report.id, { severity: e.target.value as 'high' | 'medium' | 'low' });
   };
 
   const formatDateTime = (date: Date) => {
@@ -122,6 +128,11 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
               const currentPhoto = photos[currentImageIndex];
               let photoSrc = typeof currentPhoto === 'string' ? currentPhoto : currentPhoto?.image;
 
+              // Prefer original (unannotated) photo when present
+              if (report.originalPhoto) {
+                photoSrc = report.originalPhoto;
+              }
+
               // For government view, show annotated images if available
               if (showAnnotatedImages) {
                 // Check if current photo has its own annotated image
@@ -177,9 +188,10 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
                 </div>
               );
             } else if (fallbackPhoto) {
+              const displayFallback = report.originalPhoto || fallbackPhoto;
               return (
                 <img
-                  src={fallbackPhoto}
+                  src={displayFallback}
                   alt="Pothole"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
@@ -224,7 +236,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
                       className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
-                      View Details
+                      {t('view_details', language)}
                     </button>
                   )}
                   {canDelete && (
@@ -236,7 +248,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
                       className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                     >
                       <Trash2 className="w-4 h-4" />
-                      Delete
+                      {t('delete', language)}
                     </button>
                   )}
                 </div>
@@ -322,7 +334,22 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
         {/* Government Controls */}
         {isGovView && isGovUser && (
           <div className="space-y-2 pt-2 border-t border-gray-100">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Severity
+                </label>
+                <select
+                  value={report.severity}
+                  onChange={handleSeverityChange}
+                  className="w-full text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Verification
@@ -389,7 +416,7 @@ const ModernReportCard: React.FC<ReportCardProps> = ({
 
           {/* Confidence Score */}
           <div className="text-xs text-gray-500">
-            {Math.round(report.confidence * 100)}% confidence
+            {Math.round(report.confidence * 100)}% {t('confidence', language)}
           </div>
         </div>
       </div>

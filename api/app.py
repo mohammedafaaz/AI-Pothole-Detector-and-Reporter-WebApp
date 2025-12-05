@@ -19,7 +19,12 @@ import io
 import time
 from collections import defaultdict
 import logging
-from email_service import EmailService
+try:
+    from email_service import EmailService
+    print("Email service module imported successfully")
+except ImportError as e:
+    print(f"Failed to import email service: {e}")
+    EmailService = None
 import google.generativeai as genai
 
 # Configure logging
@@ -69,6 +74,7 @@ config = {
     'IMAGE_SIZE': int(os.getenv('IMAGE_SIZE', 640)),
     'MAPBOX_ACCESS_TOKEN': os.getenv('MAPBOX_ACCESS_TOKEN', ''),
     'API_KEY': os.getenv('API_KEY', None),
+    'OPENWEATHER_API_KEY': os.getenv('OPENWEATHER_API_KEY', 'bd1fb686e8906028fa3b5af4b6514a39'),
     'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY', ''),
     'EMAIL_USER': os.getenv('EMAIL_USER', ''),
     'EMAIL_PASSWORD': os.getenv('EMAIL_PASSWORD', ''),
@@ -121,6 +127,11 @@ print(f"Email service enabled: {email_enabled}")
 if email_enabled:
     print(f"SMTP server: {config['SMTP_SERVER']}:{config['SMTP_PORT']}")
     print(f"Admin email: {config['ADMIN_EMAIL']}")
+    print(f"Email user: {config['EMAIL_USER']}")
+else:
+    print("Email configuration missing:")
+    print(f"  EMAIL_USER: {'Present' if config['EMAIL_USER'] else 'Missing'}")
+    print(f"  EMAIL_PASSWORD: {'Present' if config['EMAIL_PASSWORD'] else 'Missing'}")
 
 # Validate configuration
 def validate_config():
@@ -344,15 +355,38 @@ def api_detect():
         if detection_type == 'pothole':
             results = pothole_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
         else:  # garbage
-            results = garbage_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
+            # Use lower confidence threshold for garbage detection
+            garbage_conf = max(0.15, CONFIDENCE_THRESHOLD * 0.6)  # Lower threshold for garbage
+            results = garbage_model(input_path, conf=garbage_conf, imgsz=IMAGE_SIZE)
         
         detections = process_detection_results(results, image_width, image_height, input_path, detection_type)
         
+        # Save annotated image if detections found
+        annotated_image_url = None
+        if len(detections) > 0:
+            try:
+                # Create annotated image
+                annotated_results = results[0].plot()
+                annotated_filename = f"annotated_{detection_type}_detection_{uuid.uuid4().hex}.jpg"
+                annotated_path = os.path.join(OUTPUT_FOLDER, annotated_filename)
+                
+                # Save annotated image
+                cv2.imwrite(annotated_path, annotated_results)
+                annotated_image_url = f"/static/outputs/{annotated_filename}"
+                
+                logger.info(f"Annotated image saved: {annotated_path}")
+            except Exception as e:
+                logger.error(f"Failed to save annotated image: {e}")
+        
         # Debug: Print detection info for garbage
         if detection_type == 'garbage':
-            print(f"Garbage model detections: {len(detections)} found")
-            for det in detections:
-                print(f"  Class: {det['class']}, Confidence: {det['confidence']:.3f}")
+            print(f"\n=== GARBAGE DETECTION DEBUG ===")
+            print(f"Raw detections found: {len(detections)}")
+            print(f"Confidence threshold used: {garbage_conf:.3f}")
+            print(f"Available classes in model: {list(garbage_model.names.values())}")
+            for i, det in enumerate(detections):
+                print(f"  Detection {i+1}: Class='{det['class']}', Confidence={det['confidence']:.3f}, Severity={det['severity']}")
+            print("================================\n")
         
         # Filter detections for relevant classes
         filtered_detections = []
@@ -361,11 +395,20 @@ def api_detect():
                 if 'pothole' in detection['class'].lower():
                     filtered_detections.append(detection)
             else:  # garbage
-                # Accept ALL detections from garbage model (any class with sufficient confidence)
-                if detection['confidence'] >= CONFIDENCE_THRESHOLD:
-                    # Normalize class name to 'garbage' for display
+                # Accept garbage-related classes
+                class_name = detection['class'].lower()
+                garbage_keywords = ['garbage', 'trash', 'sampah', 'bag', 'waste']
+                
+                # Check if class is garbage-related or is a numeric class (0, 1, etc.)
+                is_garbage = (any(keyword in class_name for keyword in garbage_keywords) or 
+                             class_name.isdigit() or 
+                             class_name in ['c', '0', '1', '2', '3', '4', '5'])
+                
+                # Accept ALL detections from garbage model (since it's trained specifically for garbage)
+                if detection['confidence'] >= max(0.15, CONFIDENCE_THRESHOLD * 0.6):
                     detection_copy = detection.copy()
                     detection_copy['class'] = 'garbage'
+                    detection_copy['original_class'] = detection['class']
                     filtered_detections.append(detection_copy)
         
         # Prepare response data
@@ -373,6 +416,7 @@ def api_detect():
             'detections': filtered_detections,
             'detection_count': len(filtered_detections),
             'detection_type': detection_type,
+            'annotated_image_url': annotated_image_url,
             'image_info': {
                 'width': image_width,
                 'height': image_height,
@@ -526,6 +570,83 @@ def generate_description():
         return jsonify({
             'success': False,
             'error': f'Failed to generate description: {str(e)}'
+        }), 500
+
+@app.route(f'{API_PREFIX}/send-report-email', methods=['POST'])
+def send_report_email():
+    """Send email notification for pothole or garbage reports"""
+    try:
+        logger.info("Email endpoint called")
+        logger.info(f"Email enabled: {email_enabled}")
+        
+        if not email_enabled:
+            logger.error("Email service not configured")
+            return jsonify({
+                'success': False,
+                'error': 'Email service not configured'
+            }), 503
+        
+        data = request.get_json()
+        if not data:
+            logger.error("No data provided to email endpoint")
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        logger.info(f"Email request data keys: {list(data.keys())}")
+        
+        required_fields = ['user_email', 'user_name', 'detections_data', 'location_data', 'images_data', 'report_type']
+        for field in required_fields:
+            if field not in data:
+                logger.error(f"Missing required field: {field}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        logger.info(f"Sending email for user: {data['user_email']}")
+        
+        # Initialize email service
+        try:
+            email_service = EmailService()
+            logger.info("Email service initialized successfully")
+        except Exception as init_error:
+            logger.error(f"Failed to initialize email service: {init_error}")
+            return jsonify({
+                'success': False,
+                'error': f'Email service initialization failed: {str(init_error)}'
+            }), 500
+        
+        # Send report email
+        success, error = email_service.send_report_email(
+            user_email=data['user_email'],
+            user_name=data['user_name'],
+            detections_data=data['detections_data'],
+            location_data=data['location_data'],
+            images_data=data['images_data'],
+            report_type=data.get('report_type', 'pothole')
+        )
+        
+        logger.info(f"Email send result - Success: {success}, Error: {error}")
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Report email sent successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': error or 'Failed to send email'
+            }), 500
+    
+    except Exception as e:
+        logger.error(f"Error in send_report_email: {e}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 if __name__ == '__main__':

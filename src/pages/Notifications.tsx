@@ -1,6 +1,7 @@
 // filepath: d:\PotholeProject\project\src\pages\Notifications.tsx
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 import { Check, ThumbsUp, Trash2, X } from 'lucide-react';
 import MobileNavigation from '../components/MobileNavigation';
 
@@ -14,6 +15,7 @@ const Notifications: React.FC = () => {
     currentUser,
     isGovUser,
     govUser,
+    language,
   } = useAppStore();
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -67,17 +69,17 @@ const Notifications: React.FC = () => {
       <div className="md:pl-64">
         <div className="max-w-2xl mx-auto py-6 px-4">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-blue-700">Notifications</h1>
+        <h1 className="text-2xl font-bold text-blue-700">{t('notifications_page', language)}</h1>
         <button
           className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
           onClick={markAllNotificationsRead}
         >
-          Mark all as read
+          {t('mark_all_as_read', language)}
         </button>
       </div>
       <div className="grid gap-6">
         {filteredNotifications.length === 0 && (
-          <div className="text-center text-gray-400 py-12">No notifications</div>
+          <div className="text-center text-gray-400 py-12">{t('no_notifications', language)}</div>
         )}
         {filteredNotifications.map((n) => (
           <div
@@ -97,8 +99,8 @@ const Notifications: React.FC = () => {
                 <button
                   className="text-blue-500 hover:text-blue-700"
                   onClick={() => markNotificationRead(n.id)}
-                  aria-label="Mark as read"
-                  title="Mark as read"
+                  aria-label={t('mark_as_read', language)}
+                  title={t('mark_as_read', language)}
                 >
                   <Check size={18} />
                 </button>
@@ -113,12 +115,12 @@ const Notifications: React.FC = () => {
                     onClick={() => handleThanks(n.id)}
                   >
                     <ThumbsUp size={16} />
-                    Say Thanks
+                    {t('say_thanks', language)}
                   </button>
                 )}
               {n.type === 'compliment' && isGovUser && govUser && n.govUserId === govUser.id && (
                 <span className="text-green-700 text-xs flex items-center gap-1">
-                  <ThumbsUp size={14} /> Compliment received!
+                  <ThumbsUp size={14} /> {t('compliment_received', language)}
                 </span>
               )}
               {n.type === 'resolved' &&
@@ -127,7 +129,7 @@ const Notifications: React.FC = () => {
                 n.complimentedBy &&
                 n.complimentedBy.includes(currentUser.id) && (
                   <span className="text-green-700 text-xs flex items-center gap-1">
-                    <ThumbsUp size={14} /> Thanked
+                    <ThumbsUp size={14} /> {t('thanked', language)}
                   </span>
                 )}
 
@@ -138,8 +140,8 @@ const Notifications: React.FC = () => {
                 }`}
                 onClick={() => handleDeleteNotification(n.id)}
                 disabled={deletingId === n.id}
-                aria-label="Delete notification"
-                title="Delete notification"
+                aria-label={t('delete_notification', language)}
+                title={t('delete_notification', language)}
               >
                 {deletingId === n.id ? (
                   <X size={18} className="animate-spin" />

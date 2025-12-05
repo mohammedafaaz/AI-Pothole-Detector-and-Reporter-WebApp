@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Filter, ChevronDown, X } from 'lucide-react';
 import Button from './ui/Button';
+import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 
 interface FilterOptions {
   severity: string[];
@@ -18,6 +20,7 @@ interface ReportFiltersProps {
 }
 
 const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange, className = '' }) => {
+  const { language } = useAppStore();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +92,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
       >
         <Filter className={`w-4 h-4 ${hasActiveFilters ? 'text-blue-600' : 'text-gray-600'}`} />
         <span className={`text-sm font-medium ${hasActiveFilters ? 'text-blue-700' : 'text-gray-700'}`}>
-          Filters
+          {t('filters', language)}
         </span>
         {hasActiveFilters && (
           <span className="bg-blue-600 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
@@ -106,7 +109,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
         <div className="absolute top-full left-0 mt-2 w-96 max-w-[95vw] bg-white rounded-lg shadow-xl border border-gray-200 z-[1001] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-sm font-semibold text-gray-900">Report Filters</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t('report_filters', language)}</h3>
             <div className="flex items-center gap-2">
               {hasActiveFilters && (
                 <Button
@@ -114,7 +117,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
                   variant="ghost"
                   className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
                 >
-                  Clear All
+                  {t('clear_all', language)}
                 </Button>
               )}
               <Button
@@ -132,7 +135,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
             {/* Severity Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                Severity Level
+                {t('severity_level', language)}
               </label>
               <div className="flex flex-wrap gap-2">
                 {['high', 'medium', 'low'].map(severity => (
@@ -150,8 +153,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      
-                      {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                      {t(severity, language)}
                     </div>
                   </button>
                 ))}
@@ -161,15 +163,15 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
             {/* Date Range Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                Date Range
+                {t('date_range', language)}
               </label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { value: 'all', label: 'All Time' },
-                  { value: 'today', label: 'Today' },
-                  { value: 'week', label: 'This Week' },
-                  { value: 'month', label: 'This Month' },
-                  { value: 'custom', label: 'Custom' }
+                  { value: 'all', label: 'all_time' },
+                  { value: 'today', label: 'today' },
+                  { value: 'week', label: 'this_week' },
+                  { value: 'month', label: 'this_month' },
+                  { value: 'custom', label: 'custom' }
                 ].map(option => (
                   <button
                     key={option.value}
@@ -181,7 +183,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      {option.label}
+                      {t(option.label, language)}
                     </div>
                   </button>
                 ))}
@@ -193,7 +195,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Start Date
+                    {t('start_date', language)}
                   </label>
                   <input
                     type="date"
@@ -204,7 +206,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    End Date
+                    {t('end_date', language)}
                   </label>
                   <input
                     type="date"
@@ -219,30 +221,30 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
             {/* Sort Options */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                Sort Options
+                {t('sort_options', language)}
               </label>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Sort By</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t('sort_by', language)}</label>
                   <select
                     value={filters.sortBy}
                     onChange={(e) => handleSortChange(e.target.value as FilterOptions['sortBy'], filters.sortOrder)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="date">Date Created</option>
-                    <option value="severity">Severity</option>
-                    <option value="status">Status</option>
+                    <option value="date">{t('date_created', language)}</option>
+                    <option value="severity">{t('severity', language)}</option>
+                    <option value="status">{t('status', language)}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Order</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t('order', language)}</label>
                   <select
                     value={filters.sortOrder}
                     onChange={(e) => handleSortChange(filters.sortBy, e.target.value as FilterOptions['sortOrder'])}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="desc">Newest First</option>
-                    <option value="asc">Oldest First</option>
+                    <option value="desc">{t('newest_first', language)}</option>
+                    <option value="asc">{t('oldest_first', language)}</option>
                   </select>
                 </div>
               </div>
@@ -253,7 +255,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({ filters, onFiltersChange,
           <div className="p-4 border-t border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between text-xs text-gray-500">
               <span>
-                {activeFiltersCount} active filter{activeFiltersCount !== 1 ? 's' : ''}
+                {activeFiltersCount} {t('active_filters', language)}{activeFiltersCount !== 1 ? 's' : ''}
               </span>
             </div>
           </div>

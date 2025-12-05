@@ -6,9 +6,13 @@ import ProfileSetup from './pages/ProfileSetup';
 import ModernHome from './pages/ModernHome';
 import GovDashboard from './pages/GovDashboard';
 import ModernDashboard from './pages/ModernDashboard';
+import UserDashboard from './pages/UserDashboard';
 import Profile from './pages/Profile';
 import NewReport from './pages/NewReport';
 import Notifications from './pages/Notifications';
+import GarbageTruckTimeManagement from './pages/GarbageTruckTimeManagement';
+import ResolvedIssues from './pages/ResolvedIssues';
+import WakeTimeSettings from './pages/WakeTimeSettings';
 import { useAppStore } from './store';
 import { loadModel } from './utils/detection';
 
@@ -95,6 +99,26 @@ const App: React.FC = () => {
 
         <Route path="/notifications" element={
           isLoggedIn ? <Notifications /> : <Navigate to="/login" />
+        } />
+
+        <Route path="/user-dashboard" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <UserDashboard /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/gov-dashboard"} />
+        } />
+
+        <Route path="/garbage-truck-management" element={
+          isLoggedIn && isGovUser && hasCompletedSetup ? <GarbageTruckTimeManagement /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/dashboard"} />
+        } />
+
+        <Route path="/resolved-issues" element={
+          isLoggedIn && isGovUser && hasCompletedSetup ? <ResolvedIssues /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/dashboard"} />
+        } />
+
+        <Route path="/wake-time-settings" element={
+          isLoggedIn && !isGovUser && hasCompletedSetup ? <WakeTimeSettings /> :
+          <Navigate to={!isLoggedIn ? "/login" : !hasCompletedSetup ? "/profile-setup" : "/gov-dashboard"} />
         } />
       </Routes>
     </BrowserRouter>

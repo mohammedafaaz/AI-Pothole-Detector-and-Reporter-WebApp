@@ -69,8 +69,8 @@ const DetectionProgressBar: React.FC<DetectionProgressBarProps> = ({
               {currentStep === 'error' ? '⚠️' : '🔍'}
             </span>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900">
-            {currentStep === 'error' ? 'Detection Error' : 'AI Pothole Detection'}
+          <h3 className="text-lg font-semibold text-gray-900">AI Hazard Detection
+            {currentStep === 'error' ? 'Detection Error' : ''}
           </h3>
           <p className="text-sm text-gray-600 mt-1">
             {message || 'Processing your images with our ML model...'}

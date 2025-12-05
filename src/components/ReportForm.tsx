@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Check } from 'lucide-react';
 import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 import { Detection } from '../types';
 import { getCurrentLocation, getAddressFromCoordinates } from '../utils/location';
 import CameraCapture from './CameraCapture';
@@ -12,7 +13,7 @@ import PotholeDetectionAPI from '../services/potholeAPI';
 
 const ReportForm: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, addReport } = useAppStore();
+  const { currentUser, addReport, language } = useAppStore();
   const { detectFromBase64 } = usePotholeDetection();
 
   const [showCamera, setShowCamera] = useState(false);
@@ -55,7 +56,7 @@ const ReportForm: React.FC = () => {
   ) => {
     // Check if we already have 5 photos
     if (photos.length >= 5) {
-      setError('Maximum 5 photos allowed');
+      setError(t('maximum_photos', language));
       return;
     }
 
@@ -91,7 +92,7 @@ const ReportForm: React.FC = () => {
   // New function to analyze all captured images
   const handleAnalyzeImages = async () => {
     if (photos.length === 0) {
-      setError('Please capture at least one image first');
+      setError(t('use_capture', language));
       return;
     }
 
@@ -140,7 +141,6 @@ const ReportForm: React.FC = () => {
         try {
           const result = await detectFromBase64(photo, {
             includeImage: true,
-            email: 'mohammedafaaz433@gmail.com',
             sendEmail: false, // Don't send email during analysis
             location: locationData,
             userInfo: {
@@ -212,6 +212,46 @@ const ReportForm: React.FC = () => {
         setTimeout(() => {
           setAnalysisSuccess(false);
         }, 8000);
+
+        // Auto-generate description using Gemini API after successful detection
+        if (photos.length > 0) {
+          try {
+            // Convert the first photo to File for Gemini API
+            const response = await fetch(photos[0]);
+            const blob = await response.blob();
+            const file = new File([blob], `detected-image.jpg`, { type: 'image/jpeg' });
+            
+            // Generate description using Gemini API
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            if (currentLocation) {
+              formData.append('location', JSON.stringify({
+                lat: currentLocation.lat,
+                lng: currentLocation.lng,
+                address: currentLocation.address || 'Location detected'
+              }));
+            }
+
+            const geminiResponse = await fetch('http://localhost:5000/api/v1/generate-description', {
+              method: 'POST',
+              body: formData
+            });
+
+            const geminiData = await geminiResponse.json();
+
+            if (geminiData.success && geminiData.description) {
+              setAiDescription(geminiData.description);
+              setDescription(geminiData.description);
+              console.log('✅ Auto-description generated successfully');
+            } else {
+              console.log('⚠️ Auto-description generation failed:', geminiData.error);
+            }
+          } catch (error) {
+            console.log('⚠️ Auto-description generation error:', error);
+            // Don't show error to user as this is automatic
+          }
+        }
       }
 
       setImagesAnalyzed(true);
@@ -249,6 +289,13 @@ const ReportForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🚀 Form submission started', { 
+      photos: photos.length, 
+      potholeDetected, 
+      imagesAnalyzed, 
+      validationErrors: validationErrors.length,
+      currentUser: currentUser?.name 
+    });
 
     if (photos.length === 0) {
       const itemType = reportType === 'pothole' ? 'pothole' : 'garbage dump';
@@ -266,9 +313,12 @@ const ReportForm: React.FC = () => {
 
     
     if (!currentUser) {
+      console.error('❌ No current user found:', { currentUser, userEmail: useAppStore.getState().userEmail });
       setError('You must be logged in to submit a report');
       return;
     }
+    
+    console.log('✅ Current user verified:', { id: currentUser.id, name: currentUser.name, email: currentUser.email });
     
     setIsSubmitting(true);
     setError(null);
@@ -316,7 +366,14 @@ const ReportForm: React.FC = () => {
       };
       
       // Add report to store
+      console.log('💾 Calling addReport with data:', reportData);
       addReport(reportData);
+      console.log('✅ addReport call completed');
+      
+      // Verify report was added
+      const { reports: updatedReports } = useAppStore.getState();
+      console.log('📊 Total reports after adding:', updatedReports.length);
+      console.log('🔍 Latest report:', updatedReports[0]);
 
       // Send single email with comprehensive multi-image report
       try {
@@ -380,9 +437,13 @@ const ReportForm: React.FC = () => {
               import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'
             );
 
-            const result = await api.sendReportEmail(emailData);
+            const result = await api.sendReportEmail({
+              ...emailData,
+              report_type: reportType
+            });
             console.log('Email sent successfully:', result);
-            console.log(`Email report sent for ${photos.length} images (${totalDetections} total potholes detected)`);
+            const itemType = reportType === 'pothole' ? 'potholes' : 'garbage dumps';
+            console.log(`Email report sent for ${photos.length} images (${totalDetections} total ${itemType} detected)`);
           } catch (emailError) {
             console.error('Email sending failed:', emailError);
             // Don't fail the submission if email fails
@@ -392,6 +453,7 @@ const ReportForm: React.FC = () => {
         }
 
         // Navigate to home page
+        console.log('🏠 Navigating to home page');
         navigate('/home');
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
@@ -452,15 +514,15 @@ const ReportForm: React.FC = () => {
             }}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
-            <option value="pothole">Pothole</option>
-            <option value="garbage">Garbage Dump</option>
+            <option value="pothole">{t('pothole_report', language)}</option>
+            <option value="garbage">{t('garbage_dump_report', language)}</option>
           </select>
         </div>
         <div className="mb-6">
           <label className="block text-gray-700 font-medium mb-2">
-            {reportType === 'pothole' ? 'Pothole' : 'Garbage Dump'} Photos <span className="text-red-500">*</span>
+            {t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} {t('photos', language)} <span className="text-red-500">*</span>
             <span className="text-sm text-gray-500 ml-2">
-              ({photos.length} out of 5 images captured)
+              ({photos.length} {t('captured_out_of', language)})
             </span>
           </label>
 
@@ -477,7 +539,7 @@ const ReportForm: React.FC = () => {
               }`}
             >
               <Camera size={20} />
-              {photos.length === 0 ? 'Capture' : 'Add'}
+              {photos.length === 0 ? t('capture', language) : t('add', language)}
             </button>
 
             <button
@@ -493,7 +555,7 @@ const ReportForm: React.FC = () => {
               }`}
             >
               <Check size={20} />
-              {isAnalyzing ? 'Analyzing...' : imagesAnalyzed ? 'Analyze again' : 'Analyze Images'}
+              {isAnalyzing ? t('analyzing', language) : imagesAnalyzed ? t('analyze_again', language) : t('analyze_images', language)}
             </button>
           </div>
 
@@ -509,11 +571,11 @@ const ReportForm: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-green-800 font-semibold text-base">Analysis Successful!</h3>
+                  <h3 className="text-green-800 font-semibold text-base">{t('analysis_successful', language)}</h3>
                   <p className="text-green-700 text-sm mt-1">
                     {photos.length === 1
-                      ? `${reportType === 'pothole' ? 'Pothole' : 'Garbage'} detected in your image. You can now submit your report.`
-                      : `${reportType === 'pothole' ? 'Potholes' : 'Garbage'} detected in all ${photos.length} images. You can now submit your report.`
+                      ? `${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected_in_image', language)}`
+                      : `${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected_in_images', language)} ${photos.length} ${t('images', language)}`
                     }
                   </p>
                 </div>
@@ -639,7 +701,7 @@ const ReportForm: React.FC = () => {
         
         <div className="mb-6">
           <label htmlFor="description" className="block text-gray-700 font-medium mb-2">
-            Description (Optional)
+            {t('description_optional', language)}
           </label>
 
           {/* AI Description Generator */}
@@ -657,7 +719,7 @@ const ReportForm: React.FC = () => {
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add any additional details about the pothole..."
+            placeholder={t('additional_details', language)}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
             rows={3}
           />
@@ -677,7 +739,7 @@ const ReportForm: React.FC = () => {
             onClick={() => navigate('/home')}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
           >
-            Cancel
+            {t('cancel', language)}
           </button>
           
           <button
@@ -689,16 +751,16 @@ const ReportForm: React.FC = () => {
                 : 'bg-gray-400 cursor-not-allowed'
             }`}
             title={
-              !imagesAnalyzed ? 'Please analyze images first' :
-              validationErrors.length > 0 ? `Some images do not contain ${reportType === 'pothole' ? 'potholes' : 'garbage'}` :
-              !potholeDetected ? `No ${reportType === 'pothole' ? 'potholes' : 'garbage'} detected in images` : ''
+              !imagesAnalyzed ? t('analyze_first', language) :
+              validationErrors.length > 0 ? `${t('valid_image', language)}` :
+              !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected', language)}` : ''
             }
           >
-            {isSubmitting ? 'Submitting...' :
-             !imagesAnalyzed ? 'Analyze Images First' :
-             validationErrors.length > 0 ? 'Capture Valid Image' :
-             !potholeDetected ? `No ${reportType === 'pothole' ? 'Potholes' : 'Garbage'} Detected` :
-             'Submit Report'}
+            {isSubmitting ? t('submitting', language) :
+             !imagesAnalyzed ? t('analyze_first', language) :
+             validationErrors.length > 0 ? t('valid_image', language) :
+             !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected', language)}` :
+             t('submit_report', language)}
           </button>
         </div>
       </form>

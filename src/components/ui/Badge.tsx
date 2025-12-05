@@ -1,5 +1,7 @@
 import React from 'react';
 import { getSeverityColor, getStatusColor, getVerificationColor } from '../../styles/design-system';
+import { useAppStore } from '../../store';
+import { t } from '../../utils/translations';
 
 interface BadgeProps {
   variant?: 'status' | 'severity' | 'verification' | 'default';
@@ -16,6 +18,8 @@ const Badge: React.FC<BadgeProps> = ({
   showDot = false,
   className = '' 
 }) => {
+  const { language } = useAppStore();
+  
   const getColors = () => {
     switch (variant) {
       case 'status':
@@ -48,6 +52,12 @@ const Badge: React.FC<BadgeProps> = ({
   const colors = getColors();
   
   const formatValue = (val: string) => {
+    // Try to get translation first
+    const translatedValue = t(val, language);
+    if (translatedValue !== val) {
+      return translatedValue;
+    }
+    // Fallback to formatting the original value
     return val.split('_').map(word => 
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');

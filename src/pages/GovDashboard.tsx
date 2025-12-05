@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { MapPin, X, TrendingUp, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import EnhancedMap from '../components/EnhancedMap';
-import ModernReportCard from '../components/ModernReportCard';
+
+import GroupedReportCard from '../components/GroupedReportCard';
 import StatsCard from '../components/StatsCard';
 import MobileNavigation from '../components/MobileNavigation';
 import Card from '../components/ui/Card';
@@ -9,6 +10,7 @@ import Button from '../components/ui/Button';
 import ReportFilters, { FilterOptions } from '../components/ReportFilters';
 import { useAppStore } from '../store';
 import { filterReportsWithinRadius } from '../utils/location';
+import { groupReportsByLocation } from '../utils/reportGrouping';
 
 const GovDashboard: React.FC = () => {
   const {
@@ -27,11 +29,13 @@ const GovDashboard: React.FC = () => {
   const [selectedReportType, setSelectedReportType] = useState<'all' | 'pothole' | 'garbage'>('all');
 
   // Government location is set during profile setup, no auto-detection needed
-  // Filter reports within 5km radius for government users with additional filters
-  const filteredReports = useMemo(() => {
+  // Filter and group reports within 5km radius for government users
+  const { filteredReports, groupedReports } = useMemo(() => {
+    // If govLocation is set, filter to 5km radius. If not set, show all reports
+    // so government users still see incoming reports until they set their area.
     let filtered = govLocation
       ? filterReportsWithinRadius(reports, govLocation.lat, govLocation.lng, 5)
-      : [];
+      : reports.slice();
 
     // Report type filter
     if (selectedReportType !== 'all') {
@@ -92,7 +96,10 @@ const GovDashboard: React.FC = () => {
       return filters.sortOrder === 'desc' ? -comparison : comparison;
     });
 
-    return filtered;
+    // Group reports by location
+    const grouped = groupReportsByLocation(filtered);
+    
+    return { filteredReports: filtered, groupedReports: grouped };
   }, [reports, govLocation, filters, selectedReportType]);
 
   // Calculate stats based on all reports in radius (not filtered by type)
@@ -244,14 +251,13 @@ const GovDashboard: React.FC = () => {
 
           {/* Reports Grid */}
           <div className="w-full">
-            {filteredReports.length > 0 ? (
+            {groupedReports.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredReports.map(report => (
-                  <ModernReportCard
-                    key={report.id}
-                    report={report}
+                {groupedReports.map(groupedReport => (
+                  <GroupedReportCard
+                    key={groupedReport.id}
+                    groupedReport={groupedReport}
                     isGovView={true}
-                    showAnnotatedImages={true}
                   />
                 ))}
               </div>

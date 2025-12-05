@@ -1,5 +1,6 @@
 import React from 'react';
 import ReportForm from '../components/ReportForm';
+import LanguageToggle from '../components/LanguageToggle';
 import MobileNavigation from '../components/MobileNavigation';
 
 const NewReport: React.FC = () => {
@@ -9,6 +10,9 @@ const NewReport: React.FC = () => {
 
       {/* Desktop sidebar spacing */}
       <div className="md:pl-64">
+        <div className="p-4 mb-4 flex justify-end">
+          <LanguageToggle />
+        </div>
         <div className="p-4">
           <ReportForm />
         </div>

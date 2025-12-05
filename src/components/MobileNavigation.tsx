@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, Plus, Bell, User, BarChart3, FileText
+  Home, Plus, Bell, User, BarChart3, FileText, Truck, Clock, CheckCircle
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 
 const MobileNavigation: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isGovUser, notifications, currentUser, govUser } = useAppStore();
+  const { isGovUser, notifications, currentUser, govUser, language } = useAppStore();
 
   // Filter notifications by user and count unread
   const userNotifications = notifications.filter(n => {
@@ -70,26 +71,58 @@ const MobileNavigation: React.FC = () => {
     };
   }, [lastScrollY]);
 
+  // Helper to get translated nav label
+  const getNavLabel = (key: string): string => {
+    const labelMap: Record<string, string> = {
+      'home': 'home',
+      'dashboard': 'dashboard',
+      'reports': 'reports',
+      'report': 'report_a_hazard',
+      'alerts': 'notifications',
+      'profile': 'profile',
+      'resolved-issues': 'resolved-issues',
+      'garbage-truck': 'garbage-truck',
+      'notifications': 'notifications',
+    };
+    return t(labelMap[key] || key, language);
+  };
+
   const citizenNavItems = [
     {
       id: 'home',
-      label: 'Home',
+      label: getNavLabel('home'),
       icon: Home,
       path: '/home',
       badge: null as number | null,
       isAction: false
     },
     {
+      id: 'dashboard',
+      label: getNavLabel('dashboard'),
+      icon: BarChart3,
+      path: '/user-dashboard',
+      badge: null as number | null,
+      isAction: false
+    },
+    {
       id: 'reports',
-      label: 'Reports',
+      label: getNavLabel('reports'),
       icon: FileText,
       path: '/dashboard',
       badge: null as number | null,
       isAction: false
     },
     {
+      id: 'wake-time',
+      label: language === 'en' ? 'Wake Time' : 'ಎಚ್ಚರ ಸಮಯ',
+      icon: Clock,
+      path: '/wake-time-settings',
+      badge: null as number | null,
+      isAction: false
+    },
+    {
       id: 'report',
-      label: 'Report',
+      label: getNavLabel('report'),
       icon: Plus,
       path: '/report',
       badge: null as number | null,
@@ -97,7 +130,7 @@ const MobileNavigation: React.FC = () => {
     },
     {
       id: 'notifications',
-      label: 'Alerts',
+      label: getNavLabel('alerts'),
       icon: Bell,
       path: '/notifications',
       badge: unreadCount > 0 ? unreadCount : null,
@@ -105,7 +138,7 @@ const MobileNavigation: React.FC = () => {
     },
     {
       id: 'profile',
-      label: 'Profile',
+      label: getNavLabel('profile'),
       icon: User,
       path: '/profile',
       badge: null as number | null,
@@ -116,7 +149,7 @@ const MobileNavigation: React.FC = () => {
   const govNavItems = [
     {
       id: 'dashboard',
-      label: 'Dashboard',
+      label: getNavLabel('dashboard'),
       icon: BarChart3,
       path: '/gov-home',
       badge: null as number | null,
@@ -124,15 +157,31 @@ const MobileNavigation: React.FC = () => {
     },
     {
       id: 'reports',
-      label: 'Reports',
+      label: getNavLabel('reports'),
       icon: FileText,
       path: '/gov-dashboard',
       badge: null as number | null,
       isAction: false
     },
     {
+      id: 'resolved-issues',
+      label: getNavLabel('resolved-issues'),
+      icon: CheckCircle,
+      path: '/resolved-issues',
+      badge: null as number | null,
+      isAction: false
+    },
+    {
+      id: 'garbage-truck',
+      label: getNavLabel('garbage-truck'),
+      icon: Truck,
+      path: '/garbage-truck-management',
+      badge: null as number | null,
+      isAction: false
+    },
+    {
       id: 'notifications',
-      label: 'Alerts',
+      label: getNavLabel('notifications'),
       icon: Bell,
       path: '/notifications',
       badge: unreadCount > 0 ? unreadCount : null,
@@ -140,7 +189,7 @@ const MobileNavigation: React.FC = () => {
     },
     {
       id: 'profile',
-      label: 'Profile',
+      label: getNavLabel('profile'),
       icon: User,
       path: '/profile',
       badge: null as number | null,
@@ -246,7 +295,7 @@ const MobileNavigation: React.FC = () => {
                 />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">FixMyPothole.AI</h1>
+                <h1 className="text-lg font-semibold text-gray-900">Spot & Fix</h1>
                 <p className="text-xs text-gray-500">
                   {isGovUser ? 'Government Portal' : 'Citizen Portal'}
                 </p>

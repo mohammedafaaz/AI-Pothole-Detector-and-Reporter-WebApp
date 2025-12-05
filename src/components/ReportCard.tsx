@@ -44,10 +44,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isGovView = false }) =>
     <div className="glass rounded-lg shadow-xl overflow-hidden mb-4 transition-transform hover:scale-[1.01] flex animate-pop-in">
       {/* Left side - Image */}
       <div className="w-1/2 relative">
-        {(report.annotatedImageUrl || report.photo) && (
+        {(report.originalPhoto || report.annotatedImageUrl || report.photo) && (
           <div className="relative w-full h-full">
             <img
-              src={report.annotatedImageUrl || report.photo}
+              src={report.originalPhoto || report.annotatedImageUrl || report.photo}
               alt="Pothole"
               className="w-full h-full object-contain bg-black/40"
             />

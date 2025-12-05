@@ -1,9 +1,10 @@
 import React from 'react';
 import { useAppStore } from '../store';
+import { t } from '../utils/translations';
 import { User } from 'lucide-react';
 
 const CitizenHeader: React.FC = () => {
-  const { currentUser, getBadge } = useAppStore();
+  const { currentUser, getBadge, language } = useAppStore();
 
   if (!currentUser) return null;
 
@@ -48,16 +49,16 @@ const CitizenHeader: React.FC = () => {
           </div>
           <div>
             <h2 className="font-semibold text-white">{currentUser.name}</h2>
-            <p className="text-xs text-blue-200">Citizen Reporter</p>
+            <p className="text-xs text-blue-200">{language === 'en' ? 'Citizen Reporter' : 'ನಾಗರಿಕ ವರದಿ ದಾರ'}</p>
           </div>
         </div>
 
         {/* Points and Progress */}
         <div className="flex items-center space-x-4">
           <div className="text-right">
-            <div className="text-sm font-medium">Points: {points}</div>
+            <div className="text-sm font-medium">{t('total_points', language)}: {points}</div>
             <div className={`text-xs capitalize ${getBadgeColor(badge)}`}>
-              {badge === 'none' ? 'No Badge' : `${badge} Badge`}
+              {badge === 'none' ? t('no_other_users', language) : `${badge} ${language === 'en' ? 'Badge' : 'ಬ್ಯಾಜ್'}`}
             </div>
           </div>
           
@@ -70,7 +71,7 @@ const CitizenHeader: React.FC = () => {
               ></div>
             </div>
             <div className="text-xs text-blue-200 mt-1 text-center">
-              {badge === 'gold' ? 'Max Level!' : `Next: ${nextBadgeInfo.next} (${nextBadgeInfo.target} pts)`}
+              {badge === 'gold' ? (language === 'en' ? 'Max Level!' : 'ಗರಿಷ್ಠ ಸ್ತರ!') : `${language === 'en' ? 'Next: ' : 'ಮುಂದಿನ: '}${nextBadgeInfo.next} (${nextBadgeInfo.target} pts)`}
             </div>
           </div>
         </div>
@@ -79,7 +80,7 @@ const CitizenHeader: React.FC = () => {
       {/* Mobile Progress Bar */}
       <div className="sm:hidden mt-3">
         <div className="flex items-center justify-between text-xs text-blue-200 mb-1">
-          <span>Progress to {nextBadgeInfo.next}</span>
+          <span>{language === 'en' ? 'Progress to' : 'ನಿರ್ದೇಶನ'} {nextBadgeInfo.next}</span>
           <span>{points}/{nextBadgeInfo.target} pts</span>
         </div>
         <div className="w-full bg-blue-800 rounded-full h-2">

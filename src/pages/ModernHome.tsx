@@ -4,11 +4,13 @@ import {
   X, Search,
   TrendingUp, AlertTriangle, CheckCircle, Clock
 } from 'lucide-react';
+import { t } from '../utils/translations';
 import EnhancedMap from '../components/EnhancedMap';
 import StatsCard from '../components/StatsCard';
 import MobileNavigation from '../components/MobileNavigation';
 import CitizenHeader from '../components/CitizenHeader';
 import LocationRadiusSelector from '../components/LocationRadiusSelector';
+import LanguageToggle from '../components/LanguageToggle';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 
@@ -19,7 +21,8 @@ const ModernHome: React.FC = () => {
     userLocation,
     setUserLocation,
     govLocation,
-    currentUser
+    currentUser,
+    language
   } = useAppStore();
   
   const [showMap, setShowMap] = useState(false);
@@ -144,6 +147,7 @@ const ModernHome: React.FC = () => {
             
             {/* Action buttons */}
             <div className="flex items-center gap-2">
+              <LanguageToggle />
               {!isGovUser && (
                 <Button
                   variant="secondary"
@@ -165,13 +169,13 @@ const ModernHome: React.FC = () => {
               <h2 className="text-xl font-bold text-gray-900 mb-4 border-b border-gray-200 pb-2">Overall Report Stats</h2>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <StatsCard
-                title="Total Reports"
+                title={t('total_reports', language)}
                 value={stats.total}
                 icon={AlertTriangle}
                 
               />
               <StatsCard
-                title="Pending"
+                title={t('pending', language)}
                 value={stats.pending}
                 icon={Clock}
                 

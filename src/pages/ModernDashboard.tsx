@@ -6,12 +6,14 @@ import {
   Plus, MapPin, X,
   TrendingUp, AlertTriangle, CheckCircle, Clock
 } from 'lucide-react';
+import { t } from '../utils/translations';
 import EnhancedMap from '../components/EnhancedMap';
 import ModernReportCard from '../components/ModernReportCard';
 import StatsCard from '../components/StatsCard';
 import MobileNavigation from '../components/MobileNavigation';
 import CitizenHeader from '../components/CitizenHeader';
 import ReportFilters, { FilterOptions } from '../components/ReportFilters';
+import LanguageToggle from '../components/LanguageToggle';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 
@@ -21,8 +23,16 @@ const ModernDashboard: React.FC = () => {
     reports,
     isGovUser,
     userLocation,
-    setUserLocation
+    setUserLocation,
+    currentUser,
+    language
   } = useAppStore();
+  
+  // Debug logging
+  console.log('📊 Dashboard reports:', reports.length);
+  console.log('🔍 Reports data:', reports.map(r => ({ id: r.id, userName: r.userName, reportType: r.reportType })));
+  console.log('🔍 Current user:', currentUser?.name);
+  console.log('🔍 Is gov user:', isGovUser);
 
   // Removed selectedReport state since we removed the sidebar
   const [showMap, setShowMap] = useState(false);
@@ -110,6 +120,7 @@ const ModernDashboard: React.FC = () => {
       return filters.sortOrder === 'desc' ? -comparison : comparison;
     });
 
+    console.log('🔍 Filtered reports:', filtered.length, 'out of', reports.length);
     return filtered;
   }, [reports, filters]);
 
@@ -155,7 +166,7 @@ const ModernDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {isGovUser ? 'Government Reports' : 'Live Reports Feed'}
+                {isGovUser ? t('government_reports', language) : t('live_reports_feed', language)}
               </h1>
               <p className="text-sm text-gray-600 mt-1">
                 {isGovUser
@@ -165,16 +176,19 @@ const ModernDashboard: React.FC = () => {
               </p>
             </div>
             
-            {/* Map button */}
+            {/* Map button and Language toggle */}
             <div className="flex items-center gap-2">
+              <LanguageToggle />
               <Button
                 variant="secondary"
                 icon={<MapPin className="w-4 h-4" />}
                 onClick={() => setShowMap(true)}
                 className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
               >
-                <span className="hidden sm:inline">View Map</span>
+                <span className="hidden sm:inline">{t('view_map', language)}</span>
               </Button>
+              
+              {/* Debugging Test Add button removed */}
             </div>
           </div>
         </div>
@@ -191,31 +205,31 @@ const ModernDashboard: React.FC = () => {
           {isGovUser && (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
               <StatsCard
-                title="Total Reports"
+                title={t('total_reports', language)}
                 value={stats.total}
                 icon={AlertTriangle}
                 
               />
               <StatsCard
-                title="Pending"
+                title={t('pending', language)}
                 value={stats.pending}
                 icon={Clock}
                 
               />
               <StatsCard
-                title="In Progress"
+                title={t('in_progress_reports', language)}
                 value={stats.inProgress}
                 icon={TrendingUp}
                 
               />
               <StatsCard
-                title="Resolved"
+                title={t('resolved_reports', language)}
                 value={stats.resolved}
                 icon={CheckCircle}
                 
               />
               <StatsCard
-                title="High Priority"
+                title={t('high_priority', language)}
                 value={stats.highSeverity}
                 icon={AlertTriangle}
                 
@@ -241,16 +255,16 @@ const ModernDashboard: React.FC = () => {
             ) : (
               <Card className="text-center py-12">
                 <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No reports found</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">{t('no_reports_found', language)}</h3>
                 <p className="text-gray-600 mb-4">
-                  No pothole reports have been submitted yet
+                  {t('no_hazard_reports', language)}
                 </p>
                 {!isGovUser && (
                   <Button
                     icon={<Plus className="w-4 h-4" />}
                     onClick={() => navigate('/report')}
                   >
-                    Report a Pothole
+                    {t('report_a_hazard', language)}
                   </Button>
                 )}
               </Card>
@@ -269,7 +283,7 @@ const ModernDashboard: React.FC = () => {
                     onClick={() => setShowMap(false)}
                     className="text-gray-500 hover:text-gray-700"
                   >
-                    Close
+                    {t('close', language)}
                   </Button>
                 </div>
                 <div className="flex-1 p-4">

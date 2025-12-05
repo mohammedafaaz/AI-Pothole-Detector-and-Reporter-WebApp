@@ -73,8 +73,8 @@ const Login: React.FC = () => {
             />
           </div>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">FixMyPothole.AI</h1>
-            <p className="text-sm text-gray-600">AI Powered Pothole Detecting & Reporting System</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Spot & Fix AI</h1>
+            <p className="text-sm text-gray-600">AI Powered Hazard Detecting & Reporting System</p>
           </div>
 
           <div className="flex mb-8 bg-gray-100 rounded-xl p-1">

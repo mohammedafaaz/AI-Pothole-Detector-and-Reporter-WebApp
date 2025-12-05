@@ -47,7 +47,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose }) => 
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
       <div className="relative bg-white rounded-lg shadow-xl overflow-hidden max-w-lg w-full animate-pop-in">
         <div className="p-4 bg-blue-500 text-white flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Pothole Detection Camera</h2>
+          <h2 className="text-lg font-semibold">Hazard Detection Camera</h2>
           <button
             onClick={onClose}
             className="text-white hover:text-gray-200"
@@ -81,7 +81,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose }) => 
             {apiHealthy === false && (
               <div className="text-orange-500 mb-1">API offline error</div>
             )}
-            <span className="text-gray-500">Show me the Potholes!!</span>
+            <span className="text-gray-500">Show me the Hazards!!</span>
           </div>
           
           <button

@@ -168,6 +168,7 @@ class PotholeDetectionAPI {
     detections_data: any[];
     location_data: any;
     images_data: string[];
+    report_type?: 'pothole' | 'garbage';
   }): Promise<any> {
     try {
       const response = await fetch(`${this.baseURL}/send-report-email`, {
@@ -176,7 +177,10 @@ class PotholeDetectionAPI {
           'Content-Type': 'application/json',
           ...this.getHeaders()
         },
-        body: JSON.stringify(emailData)
+        body: JSON.stringify({
+          ...emailData,
+          report_type: emailData.report_type || 'pothole'
+        })
       });
 
       const result = await response.json();

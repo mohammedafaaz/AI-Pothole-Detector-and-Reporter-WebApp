@@ -7,6 +7,7 @@ export interface User {
   reports: string[];
   badge: Badge;
   createdAt: Date;
+  wakeUpTime?: string; // Preferred wake-up time for garbage collection
 }
 
 export interface GovUser {
@@ -70,3 +71,19 @@ export interface Detection {
 }
 
 export type Badge = 'none' | 'bronze' | 'silver' | 'gold';
+
+export interface GroupedReport {
+  id: string;
+  location: {
+    lat: number;
+    lng: number;
+    address?: string;
+  };
+  reports: Report[];
+  severity: 'high' | 'medium' | 'low';
+  verified: 'pending' | 'verified' | 'rejected';
+  fixingStatus: 'pending' | 'in_progress' | 'resolved' | 'rejected';
+  reportType: 'pothole' | 'garbage';
+  createdAt: Date;
+  updatedAt: Date;
+}

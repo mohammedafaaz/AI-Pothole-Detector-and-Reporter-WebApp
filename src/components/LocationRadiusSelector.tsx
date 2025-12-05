@@ -105,7 +105,7 @@ const LocationRadiusSelector: React.FC<LocationRadiusSelectorProps> = ({ isOpen,
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Reports in Area</h3>
-            <p className="text-sm text-gray-600">Click on the map to select a location and enter custom radius (up to 1000 km) find potholes and take preventive actions </p>
+            <p className="text-sm text-gray-600">Click on the map to select a location and enter custom radius (up to 1000 km) find hazards and take preventive actions </p>
           </div>
           <Button
             variant="ghost"
@@ -236,7 +236,7 @@ const LocationRadiusSelector: React.FC<LocationRadiusSelectorProps> = ({ isOpen,
           <div className="p-4 border-t border-gray-200 bg-gray-50">
             <div className="text-center">
               <p className="text-lg font-semibold text-gray-900">
-                {reportsInRadius} pothole reports found in this region
+                {reportsInRadius} Hazards reports found in this region
               </p>
               <p className="text-sm text-gray-600">
                 within {radius} km of selected location

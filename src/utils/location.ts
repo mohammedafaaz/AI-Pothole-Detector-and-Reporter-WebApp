@@ -117,3 +117,20 @@ export function isWithinRadius(
   const distance = calculateDistance(centerLat, centerLng, pointLat, pointLng);
   return distance <= radiusKm;
 }
+
+/**
+ * Check if two reports are within proximity (2-4 meters)
+ */
+export function areReportsInProximity(
+  report1: { location: { lat: number; lng: number } },
+  report2: { location: { lat: number; lng: number } }
+): boolean {
+  const distanceKm = calculateDistance(
+    report1.location.lat,
+    report1.location.lng,
+    report2.location.lat,
+    report2.location.lng
+  );
+  const distanceMeters = distanceKm * 1000;
+  return distanceMeters >= 2 && distanceMeters <= 4;
+}

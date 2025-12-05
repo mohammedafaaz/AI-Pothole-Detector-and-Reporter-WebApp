@@ -133,9 +133,9 @@ const ReportPopup: React.FC<ReportPopupProps> = ({ report, onViewDetails }) => {
   return (
     <div className="w-64 p-1">
       {/* Image */}
-      <div className="relative mb-3">
+        <div className="relative mb-3">
         <img 
-          src={report.annotatedImageUrl || report.photo} 
+          src={report.originalPhoto || report.annotatedImageUrl || report.photo} 
           alt="Pothole"
           className="w-full h-32 object-cover rounded-lg"
         />

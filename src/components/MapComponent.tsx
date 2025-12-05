@@ -146,16 +146,16 @@ const MapComponent: React.FC<MapComponentProps> = ({
                   </p>
                 </div>
                 
-                {(report.annotatedImageUrl || report.photo) && (
+                {(report.originalPhoto || report.annotatedImageUrl || report.photo) && (
                   <div className="mb-2">
                     <img
-                      src={report.annotatedImageUrl || report.photo}
+                      src={report.originalPhoto || report.annotatedImageUrl || report.photo}
                       alt="Pothole"
                       className="w-full h-24 object-cover rounded-md"
                     />
                     {report.annotatedImageUrl && (
                       <p className="text-xs text-gray-500 mt-1">
-                        AI-detected potholes highlighted
+                        AI-detected hazards highlighted
                       </p>
                     )}
                   </div>

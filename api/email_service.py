@@ -42,9 +42,9 @@ class EmailService:
         if not self.email_user or not self.email_password:
             raise ValueError("Email configuration missing. Please set EMAIL_USER and EMAIL_PASSWORD in .env file")
     
-    def send_pothole_report(self, user_email, user_name, detections_data, location_data, images_data):
+    def send_report_email(self, user_email, user_name, detections_data, location_data, images_data, report_type='pothole'):
         """
-        Send pothole report to both user and administrator
+        Send report to administrator (supports both pothole and garbage reports)
         
         Args:
             user_email (str): Email of the user who submitted the report
@@ -52,6 +52,7 @@ class EmailService:
             detections_data (list): List of detection data for all images
             location_data (dict): Location information with lat, lng, address
             images_data (list): List of base64 image data
+            report_type (str): Type of report ('pothole' or 'garbage')
         
         Returns:
             tuple: (success, error_message)
@@ -66,6 +67,7 @@ class EmailService:
                 detections_data=detections_data,
                 location_data=location_data,
                 images_data=images_data,
+                report_type=report_type,
                 is_admin=True
             )
 
@@ -76,8 +78,12 @@ class EmailService:
             logger.error(f"Email service error: {str(e)}")
             return False, str(e)
     
+    def send_pothole_report(self, user_email, user_name, detections_data, location_data, images_data):
+        """Legacy method for backward compatibility"""
+        return self.send_report_email(user_email, user_name, detections_data, location_data, images_data, 'pothole')
+    
     def _send_email(self, recipient_email, recipient_name, user_email, user_name, 
-                   detections_data, location_data, images_data, is_admin=False):
+                   detections_data, location_data, images_data, report_type='pothole', is_admin=False):
         """
         Send email to a specific recipient
         
@@ -87,14 +93,15 @@ class EmailService:
         try:
             # Create message with related multipart for inline images
             msg = MIMEMultipart('related')
-            msg['Subject'] = 'FixMyPothole.AI - Pothole Detection Report'
+            report_title = 'Garbage Detection Report' if report_type == 'garbage' else 'Pothole Detection Report'
+            msg['Subject'] = f'Spot n Fix AI - {report_title}'
             msg['From'] = self.email_user
             msg['To'] = recipient_email
             
             # Generate email body
             html_body = self._generate_email_body(
                 recipient_name, user_email, user_name, 
-                detections_data, location_data, images_data, is_admin
+                detections_data, location_data, images_data, report_type, is_admin
             )
             
             # Create the main message body
@@ -122,7 +129,7 @@ class EmailService:
 
 
     def _generate_email_body(self, recipient_name, user_email, user_name,
-                           detections_data, location_data, images_data, is_admin):
+                           detections_data, location_data, images_data, report_type='pothole', is_admin=False):
         """Generate clean, professional email HTML body"""
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -142,6 +149,10 @@ class EmailService:
                 severity_levels = {'High': 3, 'Medium': 2, 'Low': 1}
                 if severity_levels.get(severity, 1) > severity_levels.get(highest_severity, 1):
                     highest_severity = severity
+        
+        # Set report type specific variables
+        report_title = 'Garbage Detection Report' if report_type == 'garbage' else 'Pothole Detection Report'
+        detection_type = 'garbage dump' if report_type == 'garbage' else 'pothole'
         
         # Location information
         location_text = "Location not available"
@@ -170,7 +181,7 @@ class EmailService:
         <html>
         <head>
             <meta charset="utf-8">
-            <title>FixMyPothole.AI - Pothole Detection Report</title>
+            <title>Spot n Fix AI - {report_title}</title>
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f5f5f5; }}
                 .container {{ max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
@@ -201,8 +212,8 @@ class EmailService:
             <div class="container">
                 <div class="header">
                     {logo_html}
-                    <h1 style="margin: 10px 0;">FixMyPothole.AI</h1>
-                    <p style="margin: 5px 0; font-size: 16px;">Pothole Detection Report</p>
+                    <h1 style="margin: 10px 0;">Spot n Fix AI</h1>
+                    <p style="margin: 5px 0; font-size: 16px;">{report_title}</p>
                     <p style="margin: 5px 0; font-size: 14px; opacity: 0.9;">Generated: {current_time}</p>
                 </div>
                 
@@ -242,13 +253,13 @@ class EmailService:
 
                     <div class="section">
                         <h2>Detection Results</h2>
-                        {self._generate_detection_table(detections_data)}
+                        {self._generate_detection_table(detections_data, report_type)}
                     </div>
 
                     <div class="section">
                         <h2>Analyzed Images</h2>
                         <p style="margin-bottom: 15px; color: #495057;">
-                            All {len(images_data)} uploaded images from this pothole report are displayed below:
+                            All {len(images_data)} uploaded images from this {detection_type} report are displayed below:
                         </p>
                         <div class="image-grid">
                             {self._generate_image_grid(images_data)}
@@ -257,7 +268,7 @@ class EmailService:
                 </div>
 
                 <div class="footer">
-                    <p><strong>TECH TITANS</strong> - Images Processed using YOLOv8 Model</p>
+                    <p><strong>Team DotEnv</strong> - Images Processed using YOLOv8 Model</p>
                 </div>
             </div>
         </body>
@@ -266,10 +277,11 @@ class EmailService:
 
         return html_body
 
-    def _generate_detection_table(self, detections_data):
+    def _generate_detection_table(self, detections_data, report_type='pothole'):
         """Generate HTML table with all detection results"""
+        detection_type = 'garbage dumps' if report_type == 'garbage' else 'potholes'
         if not detections_data or not any(detections_data):
-            return '<p style="text-align: center; color: #28a745; padding: 20px;">No potholes detected in the analyzed images</p>'
+            return f'<p style="text-align: center; color: #28a745; padding: 20px;">No {detection_type} detected in the analyzed images</p>'
 
         table_html = """
         <table>
@@ -294,6 +306,8 @@ class EmailService:
                     confidence = detection.get('confidence', 0) * 100
                     size = detection.get('relative_size', 0) * 100
                     detection_type = detection.get('class', 'Pothole').title()
+                    if report_type == 'garbage' and detection_type.lower() in ['garbage', '0', '1', '2', '3', '4', '5', 'c']:
+                        detection_type = 'Garbage'
 
                     table_html += f"""
                     <tr>
@@ -328,7 +342,7 @@ class EmailService:
             image_grid_html += f"""
             <div class="image-item">
                 <div class="image-title">Image {i + 1}</div>
-                <img src="cid:image_{i + 1}" alt="Pothole analysis image {i + 1}" style="max-width: 100%; height: auto; border-radius: 8px; border: 2px solid #ddd;">
+                <img src="cid:image_{i + 1}" alt="Analysis image {i + 1}" style="max-width: 100%; height: auto; border-radius: 8px; border: 2px solid #ddd;">
             </div>
             """
 
@@ -381,7 +395,7 @@ class EmailService:
         pass
     
     def _attach_images(self, msg, images_data):
-        """Attach pothole images as inline embedded content with robust error handling"""
+        """Attach report images as inline embedded content with robust error handling"""
         for i, image_data in enumerate(images_data):
             try:
                 # Validate image data
