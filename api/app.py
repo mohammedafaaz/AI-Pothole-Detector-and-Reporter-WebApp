@@ -43,6 +43,10 @@ request_counts = defaultdict(list)
 RATE_LIMIT_REQUESTS = 100
 RATE_LIMIT_WINDOW = 3600
 
+# Simple cache for external API calls (in-memory)
+external_api_cache = {}
+EXTERNAL_API_CACHE_TTL = 300  # seconds
+
 # Initialize Flask app
 app = Flask(__name__, static_url_path='/static')
 
@@ -252,6 +256,18 @@ def create_api_response(success=True, data=None, error=None, code=None, message=
     
     return response
 
+
+def get_cached_external(url):
+    now = time.time()
+    entry = external_api_cache.get(url)
+    if entry and now - entry['time'] < EXTERNAL_API_CACHE_TTL:
+        return entry['data']
+    return None
+
+
+def set_cached_external(url, data):
+    external_api_cache[url] = {'time': time.time(), 'data': data}
+
 # Helper function to process detection results
 def process_detection_results(results, image_width, image_height, input_path, model_used):
     detections = []
@@ -313,6 +329,167 @@ def api_health():
         },
         message='Dual Detection API is running'
     ))
+
+@app.route(f'{API_PREFIX}/pothole-predictions', methods=['GET'])
+@require_api_key
+def api_pothole_predictions():
+    """Return area-wise pothole risk predictions for government portal.
+
+    Query parameters:
+      - areas: optional comma-separated list of area identifiers (we use grouped report center coords)
+    """
+    try:
+        # Basic access control: only allow gov users if API_KEY is set (frontend also checks isGovUser)
+        # Aggregate reports into areas using existing data file `data2.yaml` or in-memory reports
+        # For simplicity, use grouped reports derived from stored reports in a simple JSON file if exists
+
+        # Load reports from a local store (frontend persists reports in store; server has no DB - use a file if present)
+        reports_file = 'reports.json'
+        all_reports = []
+        if os.path.exists(reports_file):
+            try:
+                with open(reports_file, 'r', encoding='utf-8') as f:
+                    all_reports = json.load(f)
+            except Exception:
+                all_reports = []
+
+        # If no file exists, attempt to read from a minimal in-memory dataset if available
+        # For now, group reports by proximity using the same grouping logic as frontend
+        grouped = []
+        if all_reports:
+            from math import radians, sin, cos, sqrt, atan2
+
+            def distance(lat1, lon1, lat2, lon2):
+                R = 6371e3
+                phi1 = radians(lat1)
+                phi2 = radians(lat2)
+                dphi = radians(lat2 - lat1)
+                dlambda = radians(lon2 - lon1)
+                a = sin(dphi/2) * sin(dphi/2) + cos(phi1) * cos(phi2) * sin(dlambda/2) * sin(dlambda/2)
+                c = 2 * atan2(sqrt(a), sqrt(1-a))
+                return R * c
+
+            processed = set()
+            for r in all_reports:
+                if r.get('id') in processed:
+                    continue
+                nearby = [o for o in all_reports if o.get('id') not in processed and o.get('id') != r.get('id') and distance(r['location']['lat'], r['location']['lng'], o['location']['lat'], o['location']['lng']) <= 50]
+                group = [r] + nearby
+                for g in group:
+                    processed.add(g.get('id'))
+
+                grouped.append({
+                    'id': f"group-{r.get('id')}",
+                    'location': r['location'],
+                    'reports': group
+                })
+
+        # For each grouped area, call OpenWeather to fetch weather forecast and compute score
+        results = []
+        openweather_key = config.get('OPENWEATHER_API_KEY')
+        if not openweather_key:
+            return jsonify(create_api_response(success=False, error='OpenWeather API key not configured', code='NO_OPENWEATHER')) , 500
+
+        for area in grouped:
+            lat = area['location']['lat']
+            lon = area['location']['lng']
+            # Build API URL for One Call (current + forecast)
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=minutely&units=metric&appid={openweather_key}"
+
+            cached = get_cached_external(url)
+            if cached is not None:
+                weather = cached
+            else:
+                try:
+                    resp = requests.get(url, timeout=8)
+                    weather = resp.json()
+                    set_cached_external(url, weather)
+                except Exception as e:
+                    weather = None
+
+            # Compute weather risk score
+            weather_score = 0.0
+            contributing = []
+            if weather:
+                # Evaluate rainfall (next 48 hours + daily rainfall)
+                # Check hourly rain and daily pop
+                hourly = weather.get('hourly', [])[:48]
+                daily = weather.get('daily', [])[:7]
+
+                # Factor 1: recent heavy rainfall events
+                rain_hours = sum(1 for h in hourly if h.get('rain', {}).get('1h', 0) > 2.5)
+                if rain_hours > 0:
+                    weather_score += min(30, rain_hours * 5)
+                    contributing.append(f"Heavy rain hours: {rain_hours}")
+
+                # Factor 2: high precipitation probability in daily forecast
+                high_pop_days = sum(1 for d in daily if (d.get('pop', 0) or 0) >= 0.6)
+                weather_score += min(30, high_pop_days * 6)
+                if high_pop_days:
+                    contributing.append(f"High precipitation days: {high_pop_days}")
+
+                # Factor 3: freeze-thaw potential (large temp swings)
+                temp_swings = 0
+                for d in daily:
+                    temp = d.get('temp', {})
+                    if temp:
+                        if abs(temp.get('max', 0) - temp.get('min', 0)) > 10:
+                            temp_swings += 1
+                weather_score += min(20, temp_swings * 4)
+                if temp_swings:
+                    contributing.append(f"Temperature swings: {temp_swings} days")
+
+                # Factor 4: storm alerts (weather alerts)
+                alerts = weather.get('alerts', [])
+                if alerts:
+                    weather_score += 20
+                    contributing.append(f"Alerts: {len(alerts)}")
+
+            # Compute report-frequency risk
+            recent_window_seconds = 7 * 24 * 3600
+            now = time.time()
+            recent_reports = [rep for rep in area['reports'] if (now - (datetime.fromisoformat(rep.get('createdAt')).timestamp() if rep.get('createdAt') else now)) <= recent_window_seconds]
+            report_count = len(recent_reports)
+            # scale: 0 reports -> 0, 1-3 -> 10-30, 4-7 -> 35-60, 8+ -> 70-100 (cap)
+            if report_count == 0:
+                report_score = 0
+            elif report_count <= 3:
+                report_score = 10 + (report_count - 1) * 10
+            elif report_count <= 7:
+                report_score = 35 + (report_count - 4) * 8
+            else:
+                report_score = 70 + min(30, (report_count - 8) * 2)
+
+            # Combine scores: weighted average (weather 0.6, reports 0.4)
+            final_score = round((weather_score * 0.6) + (report_score * 0.4), 2)
+
+            # Determine risk level
+            if final_score >= 80:
+                level = 'Critical'
+            elif final_score >= 60:
+                level = 'High'
+            elif final_score >= 30:
+                level = 'Medium'
+            else:
+                level = 'Low'
+
+            results.append({
+                'areaId': area['id'],
+                'center': area['location'],
+                'reportCount': len(area['reports']),
+                'recentReportCount': report_count,
+                'weatherScore': round(weather_score,2),
+                'reportScore': round(report_score,2),
+                'finalScore': final_score,
+                'level': level,
+                'contributingFactors': contributing,
+                'weatherData': weather
+            })
+
+        return jsonify(create_api_response(success=True, data={'predictions': results}))
+    except Exception as e:
+        logger.error(f"Error in pothole predictions: {e}")
+        return jsonify(create_api_response(success=False, error=str(e), code='PREDICTION_ERROR')), 500
 
 @app.route(f'{API_PREFIX}/detect', methods=['POST'])
 @require_api_key
