@@ -54,7 +54,7 @@ export interface DetectionOptions {
   };
   allImages?: string[];
   allDetections?: any[][];
-  detectionType?: 'pothole' | 'garbage';
+  detectionType?: 'pothole' | 'garbage' | 'stray_animals';
 }
 
 class PotholeDetectionAPI {
@@ -168,7 +168,7 @@ class PotholeDetectionAPI {
     detections_data: any[];
     location_data: any;
     images_data: string[];
-    report_type?: 'pothole' | 'garbage';
+    report_type?: 'pothole' | 'garbage' | 'stray_animals';
   }): Promise<any> {
     try {
       const response = await fetch(`${this.baseURL}/send-report-email`, {

@@ -37,7 +37,7 @@ const ReportForm: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
   
   // Report type state
-  const [reportType, setReportType] = useState<'pothole' | 'garbage'>('pothole');
+  const [reportType, setReportType] = useState<'pothole' | 'garbage' | 'stray_animals'>('pothole');
 
   // Progress bar states
   const [showProgress, setShowProgress] = useState<boolean>(false);
@@ -160,12 +160,17 @@ const ReportForm: React.FC = () => {
             if (!hasValidDetections) {
               errors.push(`Image #${i + 1} does not contain a pothole`);
             }
-          } else { // garbage
-            // Accept any detection from garbage model with sufficient confidence
+          } else if (reportType === 'garbage') {
             hasValidDetections = result.detections.length > 0 &&
               result.detections.some(detection => detection.confidence > 0.25);
             if (!hasValidDetections) {
               errors.push(`Image #${i + 1} does not contain garbage`);
+            }
+          } else { // stray_animals
+            hasValidDetections = result.detections.length > 0 &&
+              result.detections.some(detection => detection.confidence > 0.25);
+            if (!hasValidDetections) {
+              errors.push(`Image #${i + 1} does not contain stray animals`);
             }
           }
 
@@ -196,15 +201,15 @@ const ReportForm: React.FC = () => {
 
       setProgressValue(100);
 
+      const itemTypeMap = { pothole: 'potholes', garbage: 'garbage', stray_animals: 'stray animals' };
+      const itemType = itemTypeMap[reportType];
       if (errors.length > 0) {
         setValidationErrors(errors);
-        const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
         setError(`Among the ${photos.length} images captured, ${errors.join(', ')}. Please capture only images with ${itemType}.`);
         setPotholeDetected(false);
         setProgressMessage(`Detection failed - some images do not contain ${itemType}`);
       } else {
         setPotholeDetected(true);
-        const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
         setProgressMessage(`Analysis complete! All ${photos.length} images contain ${itemType}.`);
         setAnalysisSuccess(true);
 
@@ -298,14 +303,14 @@ const ReportForm: React.FC = () => {
     });
 
     if (photos.length === 0) {
-      const itemType = reportType === 'pothole' ? 'pothole' : 'garbage dump';
-      setError(`Please capture at least one photo of the ${itemType}`);
+      const itemTypeSingle = reportType === 'pothole' ? 'pothole' : reportType === 'garbage' ? 'garbage dump' : 'stray animal';
+      setError(`Please capture at least one photo of the ${itemTypeSingle}`);
       return;
     }
 
     if (!potholeDetected) {
-      const itemType = reportType === 'pothole' ? 'potholes' : 'garbage';
-      const itemTypeSingle = reportType === 'pothole' ? 'pothole' : 'garbage dump';
+      const itemType = reportType === 'pothole' ? 'potholes' : reportType === 'garbage' ? 'garbage' : 'stray animals';
+      const itemTypeSingle = reportType === 'pothole' ? 'pothole' : reportType === 'garbage' ? 'garbage dump' : 'stray animal';
       setError(`No ${itemType} detected in the captured image. Please capture a clearer image of the ${itemTypeSingle}.`);
       return;
     }
@@ -450,8 +455,8 @@ const ReportForm: React.FC = () => {
               report_type: reportType
             });
             console.log('Email sent successfully:', result);
-            const itemType = reportType === 'pothole' ? 'potholes' : 'garbage dumps';
-            console.log(`Email report sent for ${photos.length} images (${totalDetections} total ${itemType} detected)`);
+            const itemTypeLog = reportType === 'pothole' ? 'potholes' : reportType === 'garbage' ? 'garbage dumps' : 'stray animals';
+            console.log(`Email report sent for ${photos.length} images (${totalDetections} total ${itemTypeLog} detected)`);
           } catch (emailError) {
             console.error('Email sending failed:', emailError);
             // Don't fail the submission if email fails
@@ -509,7 +514,7 @@ const ReportForm: React.FC = () => {
           <select
             value={reportType}
             onChange={(e) => {
-              setReportType(e.target.value as 'pothole' | 'garbage');
+              setReportType(e.target.value as 'pothole' | 'garbage' | 'stray_animals');
               // Reset form when changing type
               setPhotos([]);
               setAllDetections([]);
@@ -524,11 +529,12 @@ const ReportForm: React.FC = () => {
           >
             <option value="pothole">{t('pothole_report', language)}</option>
             <option value="garbage">{t('garbage_dump_report', language)}</option>
+            <option value="stray_animals">{t('stray_animals_report', language)}</option>
           </select>
         </div>
         <div className="mb-6">
           <label className="block text-gray-700 font-medium mb-2">
-            {t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} {t('photos', language)} <span className="text-red-500">*</span>
+            {t(reportType === 'pothole' ? 'pothole_report' : reportType === 'garbage' ? 'garbage_dump_report' : 'stray_animals_report', language)} {t('photos', language)} <span className="text-red-500">*</span>
             <span className="text-sm text-gray-500 ml-2">
               ({photos.length} {t('captured_out_of', language)})
             </span>
@@ -582,8 +588,8 @@ const ReportForm: React.FC = () => {
                   <h3 className="text-green-800 font-semibold text-base">{t('analysis_successful', language)}</h3>
                   <p className="text-green-700 text-sm mt-1">
                     {photos.length === 1
-                      ? `${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected_in_image', language)}`
-                      : `${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected_in_images', language)} ${photos.length} ${t('images', language)}`
+                      ? `${t(reportType === 'pothole' ? 'pothole_report' : reportType === 'garbage' ? 'garbage_dump_report' : 'stray_animals_report', language)} ${t('detected_in_image', language)}`
+                      : `${t(reportType === 'pothole' ? 'pothole_report' : reportType === 'garbage' ? 'garbage_dump_report' : 'stray_animals_report', language)} ${t('detected_in_images', language)} ${photos.length} ${t('images', language)}`
                     }
                   </p>
                 </div>
@@ -761,13 +767,13 @@ const ReportForm: React.FC = () => {
             title={
               !imagesAnalyzed ? t('analyze_first', language) :
               validationErrors.length > 0 ? `${t('valid_image', language)}` :
-              !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected', language)}` : ''
+              !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : reportType === 'garbage' ? 'garbage_dump_report' : 'stray_animals_report', language)} ${t('detected', language)}` : ''
             }
           >
             {isSubmitting ? t('submitting', language) :
              !imagesAnalyzed ? t('analyze_first', language) :
              validationErrors.length > 0 ? t('valid_image', language) :
-             !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : 'garbage_dump_report', language)} ${t('detected', language)}` :
+             !potholeDetected ? `${t('no_detected', language)} ${t(reportType === 'pothole' ? 'pothole_report' : reportType === 'garbage' ? 'garbage_dump_report' : 'stray_animals_report', language)} ${t('detected', language)}` :
              t('submit_report', language)}
           </button>
         </div>

@@ -75,6 +75,7 @@ load_dotenv()
 config = {
     'POTHOLE_MODEL_PATH': os.getenv('POTHOLE_MODEL_PATH', 'best.pt'),
     'GARBAGE_MODEL_PATH': os.getenv('GARBAGE_MODEL_PATH', 'best2.pt'),
+    'ANIMAL_MODEL_PATH': os.getenv('ANIMAL_MODEL_PATH', 'yolov8n/data.pkl'),
     'CONFIDENCE_THRESHOLD': float(os.getenv('CONFIDENCE_THRESHOLD', 0.25)),
     'IMAGE_SIZE': int(os.getenv('IMAGE_SIZE', 640)),
     'MAPBOX_ACCESS_TOKEN': os.getenv('MAPBOX_ACCESS_TOKEN', ''),
@@ -151,6 +152,11 @@ def validate_config():
     elif not os.path.exists(config['GARBAGE_MODEL_PATH']):
         errors.append(f"Garbage model file not found: {config['GARBAGE_MODEL_PATH']}")
     
+    if not config['ANIMAL_MODEL_PATH']:
+        errors.append("ANIMAL_MODEL_PATH is required")
+    elif not os.path.exists(config['ANIMAL_MODEL_PATH']):
+        errors.append(f"Animal model file not found: {config['ANIMAL_MODEL_PATH']}")
+    
     try:
         if config['CONFIDENCE_THRESHOLD'] < 0 or config['CONFIDENCE_THRESHOLD'] > 1:
             errors.append("CONFIDENCE_THRESHOLD must be between 0 and 1")
@@ -176,6 +182,7 @@ validate_config()
 # Extract configuration
 POTHOLE_MODEL_PATH = config['POTHOLE_MODEL_PATH']
 GARBAGE_MODEL_PATH = config['GARBAGE_MODEL_PATH']
+ANIMAL_MODEL_PATH = config['ANIMAL_MODEL_PATH']
 CONFIDENCE_THRESHOLD = config['CONFIDENCE_THRESHOLD']
 IMAGE_SIZE = config['IMAGE_SIZE']
 MAPBOX_ACCESS_TOKEN = config['MAPBOX_ACCESS_TOKEN']
@@ -197,6 +204,10 @@ try:
     garbage_model = YOLO(GARBAGE_MODEL_PATH)
     print("Garbage model loaded successfully")
     print(f"Garbage model classes: {list(garbage_model.names.values())}")
+    
+    print(f"\nLoading animal model from: {ANIMAL_MODEL_PATH}")
+    animal_model = YOLO(ANIMAL_MODEL_PATH)
+    print("Animal model loaded successfully")
 except Exception as e:
     print(f"Error loading models: {str(e)}")
     traceback.print_exc()
@@ -278,8 +289,10 @@ def process_detection_results(results, image_width, image_height, input_path, mo
         for box in r.boxes:
             if model_used == 'pothole':
                 cls = pothole_model.names[int(box.cls)]
-            else:
+            elif model_used == 'garbage':
                 cls = garbage_model.names[int(box.cls)]
+            else:
+                cls = (animal_model.names or {0: 'animal'}).get(int(box.cls), 'animal')
             conf = float(box.conf)
             
             x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -320,6 +333,7 @@ def api_health():
             'status': 'healthy',
             'pothole_model_loaded': pothole_model is not None,
             'garbage_model_loaded': garbage_model is not None,
+            'animal_model_loaded': animal_model is not None,
             'gemini_enabled': gemini_enabled,
             'version': API_VERSION,
             'endpoints': [
@@ -513,10 +527,10 @@ def api_detect():
         
         # Get detection type from request
         detection_type = request.form.get('detection_type', 'pothole').lower()
-        if detection_type not in ['pothole', 'garbage']:
+        if detection_type not in ['pothole', 'garbage', 'stray_animals']:
             return jsonify(create_api_response(
                 success=False,
-                error='Invalid detection type. Must be "pothole" or "garbage"',
+                error='Invalid detection type. Must be "pothole", "garbage", or "stray_animals"',
                 code='INVALID_DETECTION_TYPE'
             )), 400
         
@@ -532,39 +546,27 @@ def api_detect():
         # Select appropriate model and run detection
         if detection_type == 'pothole':
             results = pothole_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
-        else:  # garbage
-            # Use lower confidence threshold for garbage detection
-            garbage_conf = max(0.15, CONFIDENCE_THRESHOLD * 0.6)  # Lower threshold for garbage
+            detections = process_detection_results(results, image_width, image_height, input_path, detection_type)
+        elif detection_type == 'garbage':
+            garbage_conf = max(0.15, CONFIDENCE_THRESHOLD * 0.6)
             results = garbage_model(input_path, conf=garbage_conf, imgsz=IMAGE_SIZE)
-        
-        detections = process_detection_results(results, image_width, image_height, input_path, detection_type)
+            detections = process_detection_results(results, image_width, image_height, input_path, detection_type)
+        else:  # stray_animals
+            results = animal_model(input_path, conf=CONFIDENCE_THRESHOLD, imgsz=IMAGE_SIZE)
+            detections = process_detection_results(results, image_width, image_height, input_path, 'stray_animals')
         
         # Save annotated image if detections found
         annotated_image_url = None
         if len(detections) > 0:
             try:
-                # Create annotated image
-                annotated_results = results[0].plot()
                 annotated_filename = f"annotated_{detection_type}_detection_{uuid.uuid4().hex}.jpg"
                 annotated_path = os.path.join(OUTPUT_FOLDER, annotated_filename)
-                
-                # Save annotated image
+                annotated_results = results[0].plot()
                 cv2.imwrite(annotated_path, annotated_results)
                 annotated_image_url = f"/static/outputs/{annotated_filename}"
-                
                 logger.info(f"Annotated image saved: {annotated_path}")
             except Exception as e:
                 logger.error(f"Failed to save annotated image: {e}")
-        
-        # Debug: Print detection info for garbage
-        if detection_type == 'garbage':
-            print(f"\n=== GARBAGE DETECTION DEBUG ===")
-            print(f"Raw detections found: {len(detections)}")
-            print(f"Confidence threshold used: {garbage_conf:.3f}")
-            print(f"Available classes in model: {list(garbage_model.names.values())}")
-            for i, det in enumerate(detections):
-                print(f"  Detection {i+1}: Class='{det['class']}', Confidence={det['confidence']:.3f}, Severity={det['severity']}")
-            print("================================\n")
         
         # Filter detections for relevant classes
         filtered_detections = []
@@ -572,17 +574,14 @@ def api_detect():
             if detection_type == 'pothole':
                 if 'pothole' in detection['class'].lower():
                     filtered_detections.append(detection)
+            elif detection_type == 'stray_animals':
+                if detection['confidence'] >= CONFIDENCE_THRESHOLD:
+                    detection_copy = detection.copy()
+                    detection_copy['class'] = 'animal'
+                    detection_copy['original_class'] = detection['class']
+                    filtered_detections.append(detection_copy)
             else:  # garbage
-                # Accept garbage-related classes
                 class_name = detection['class'].lower()
-                garbage_keywords = ['garbage', 'trash', 'sampah', 'bag', 'waste']
-                
-                # Check if class is garbage-related or is a numeric class (0, 1, etc.)
-                is_garbage = (any(keyword in class_name for keyword in garbage_keywords) or 
-                             class_name.isdigit() or 
-                             class_name in ['c', '0', '1', '2', '3', '4', '5'])
-                
-                # Accept ALL detections from garbage model (since it's trained specifically for garbage)
                 if detection['confidence'] >= max(0.15, CONFIDENCE_THRESHOLD * 0.6):
                     detection_copy = detection.copy()
                     detection_copy['class'] = 'garbage'
@@ -616,10 +615,7 @@ def api_detect():
         
         detection_name = detection_type.replace('_', ' ').title()
         if len(filtered_detections) == 0:
-            if detection_type == 'garbage':
-                message = 'No garbage present.'
-            else:
-                message = f'No {detection_name.lower()} detected.'
+            message = f'No {detection_name.lower()} detected.'
         else:
             message = f'Detection completed. Found {len(filtered_detections)} {detection_name.lower()}(s).'
         
@@ -833,6 +829,7 @@ if __name__ == '__main__':
     print("="*50)
     print(f"Pothole model path: {POTHOLE_MODEL_PATH}")
     print(f"Garbage model path: {GARBAGE_MODEL_PATH}")
+    print(f"Animal model path: {ANIMAL_MODEL_PATH}")
     print(f"Gemini AI enabled: {gemini_enabled}")
     print(f"API version: {API_VERSION}")
     print("="*50)
