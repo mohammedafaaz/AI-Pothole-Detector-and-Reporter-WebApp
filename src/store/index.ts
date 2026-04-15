@@ -63,46 +63,16 @@ interface AppState {
 }
 
 const defaultAuthenticatedUsers = {
-  'citizen@test.com': {
-    password: 'password',
-    isGov: false,
-    hasCompletedSetup: true,
-    userData: {
-      id: 'test-citizen-1',
-      name: 'Sai Kiran',
-      age: 30,
-      email: 'citizen@test.com',
-      points: 25,
-      badge: 'bronze' as Badge,
-      reports: [],
-      createdAt: new Date()
-    } as User
-  },
-  'mohammedafaaz433@gmail.com': {
-    password: 'admin123',
-    isGov: false,
-    hasCompletedSetup: true,
-    userData: {
-      id: 'admin-user-1',
-      name: 'Mohammed Afaaz',
-      age: 25,
-      email: 'mohammedafaaz433@gmail.com',
-      points: 50,
-      badge: 'silver' as Badge,
-      reports: [],
-      createdAt: new Date()
-    } as User
-  },
-  'gov@test.com': {
-    password: 'password',
+  'admin@gov.in': {
+    password: 'admin@gov',
     isGov: true,
     hasCompletedSetup: true,
     userData: {
-      id: 'test-gov-1',
-      name: 'City Government',
-      location: { lat: 40.7128, lng: -74.0060 },
-      phone: '+1-555-0123',
-      email: 'gov@test.com',
+      id: 'gov-admin-1',
+      name: 'Government Admin',
+      location: { lat: 20.5937, lng: 78.9629 },
+      phone: '',
+      email: 'admin@gov.in',
       createdAt: new Date()
     } as GovUser
   }
@@ -123,7 +93,7 @@ export const useAppStore = create(
       userEmail: null,
       language: 'en' as Language,
       authenticatedUsers: defaultAuthenticatedUsers,
-      notifications: [],
+      notifications: [] as AppNotification[],
       
       addNotification: (notif: any) =>
         set((state: any) => ({
@@ -610,18 +580,9 @@ export const useAppStore = create(
             ...defaultAuthenticatedUsers,
             ...persistedState?.authenticatedUsers,
           },
-          reports: (persistedState?.reports || []).map((report: any) => ({
-            ...report,
-            createdAt: new Date(report.createdAt),
-          })),
-          notifications: (persistedState?.notifications || []).map((notif: any) => ({
-            ...notif,
-            createdAt: new Date(notif.createdAt),
-          })),
-          groupedReports: groupReportsByLocation((persistedState?.reports || []).map((report: any) => ({
-            ...report,
-            createdAt: new Date(report.createdAt),
-          }))),
+          reports: [],
+          notifications: [],
+          groupedReports: [],
         } as AppState;
 
         return merged;

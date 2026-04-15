@@ -324,17 +324,25 @@ const ReportForm: React.FC = () => {
     setError(null);
     
     try {
-      // Get current location with high accuracy
-      const position = await getCurrentLocation();
-      const { latitude, longitude } = position.coords;
-      
-      // Get address from coordinates with better error handling
-      let address;
-      try {
-        address = await getAddressFromCoordinates(latitude, longitude);
-      } catch (error) {
-        console.error('Error getting address:', error);
-        address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      // Reuse location already fetched during analysis, or fetch fresh
+      let latitude: number;
+      let longitude: number;
+      let address: string;
+
+      if (currentLocation) {
+        latitude = currentLocation.lat;
+        longitude = currentLocation.lng;
+        address = currentLocation.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      } else {
+        const position = await getCurrentLocation();
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+        try {
+          address = await getAddressFromCoordinates(latitude, longitude);
+        } catch {
+          address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        }
+        setCurrentLocation({ lat: latitude, lng: longitude, address });
       }
       
       // Get all detections from all photos
